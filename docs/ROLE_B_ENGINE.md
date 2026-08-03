@@ -51,9 +51,9 @@
 
 | 구분 | 대상 |
 |---|---|
-| ✅ **내 소유** | `api/` 전체, `openapi.yaml`, 스코어링 로직, RAG |
+| ✅ **내 소유** | `roleB/` 전체, `openapi.yaml`, 스코어링 로직, RAG |
 | 🤝 **공동 (3인 합의)** | `db/migrations/*.sql` — **초안 작성은 B가 하되 변경은 PR + 3인 리뷰** |
-| ❌ **건드리지 않음** | `batch/` (A 소유) · `web/` (C 소유) |
+| ❌ **건드리지 않음** | `roleA/` (A 소유) · `roleC/` (C 소유) |
 
 **B는 W1에 DDL과 OpenAPI 스펙의 초안을 만들어 팀에 제공하는 책임이 있다.** 이게 늦으면 A와 C가 동시에 막힌다.
 
@@ -61,30 +61,41 @@
 
 ## 3. 레포 구조 (B 담당 부분)
 
+> **폴더는 역할 기준으로 나뉜다.** `roleA/`(데이터) · `roleB/`(엔진) · `roleC/`(웹).
+> `db/`와 `seeds/`는 루트에 두고 공유한다. Render 배포 루트는 `roleB/`다.
+
 ```
-api/
-├── app/
-│   ├── main.py                 # FastAPI 앱, CORS, 레이트리밋
-│   ├── config.py               # 환경변수
-│   ├── db.py                   # 커넥션 풀 (psycopg_pool)
-│   ├── schemas.py              # Pydantic — C와의 계약
-│   ├── constants.py            # 가중치, 어휘, ZONE_BARRIER
-│   ├── routers/
-│   │   ├── onboarding.py       # POST /api/onboarding
-│   │   ├── context.py          # GET  /api/context/now
-│   │   ├── recommend.py        # POST /api/recommend
-│   │   ├── feedback.py         # POST /api/feedback
-│   │   └── poi.py              # GET  /api/poi/{id}
-│   └── services/
-│       ├── retrieval.py        # ① 후보 생성 (PostGIS + 하드필터)
-│       ├── scoring.py          # ② 스코어링 + 재정규화
-│       ├── context_fit.py      # 날씨 비선형 로직
-│       ├── live_signals.py     # citydata 기반 실시간 항
-│       ├── rag.py              # ③ pgvector 검색
-│       ├── explain.py          # LLM 설명 + 캐시 + 템플릿 폴백
-│       └── logging_svc.py      # ④ recommendation_log
-├── tests/
-└── requirements.txt
+Dacos_WhereToGo/
+├── roleA/                          ← A 소유. 건드리지 않음
+├── roleC/                          ← C 소유. 건드리지 않음
+├── db/migrations/                  ← 공동 (초안은 B, 변경은 PR + 3인 리뷰)
+├── seeds/                          ← A 제공
+├── docs/                           ← 설계 문서
+└── roleB/                          ← B 소유
+    ├── app/
+    │   ├── main.py                 # FastAPI 앱, CORS, 레이트리밋
+    │   ├── config.py               # 환경변수
+    │   ├── db.py                   # 커넥션 풀 (psycopg_pool)
+    │   ├── schemas.py              # Pydantic — C와의 계약
+    │   ├── constants.py            # 가중치, 어휘, ZONE_BARRIER
+    │   ├── routers/
+    │   │   ├── onboarding.py       # POST /api/onboarding
+    │   │   ├── context.py          # GET  /api/context/now
+    │   │   ├── recommend.py        # POST /api/recommend
+    │   │   ├── feedback.py         # POST /api/feedback
+    │   │   └── poi.py              # GET  /api/poi/{id}
+    │   └── services/
+    │       ├── retrieval.py        # ① 후보 생성 (PostGIS + 하드필터)
+    │       ├── scoring.py          # ② 스코어링 + 재정규화
+    │       ├── context_fit.py      # 날씨 비선형 로직
+    │       ├── live_signals.py     # citydata 기반 실시간 항
+    │       ├── rag.py              # ③ pgvector 검색
+    │       ├── explain.py          # LLM 설명 + 캐시 + 템플릿 폴백
+    │       └── logging_svc.py      # ④ recommendation_log
+    ├── tests/
+    ├── openapi.yaml                # C와의 계약. 변경은 PR
+    ├── requirements.txt
+    └── README.md
 ```
 
 ---
@@ -392,7 +403,7 @@ def template_reason(poi, wx, ctx, terms) -> str:
 |---|---|---|---|
 | B1-1 | **DDL 초안 작성** → 3인 리뷰 | `db/migrations/001_init.sql` | 로컬 Docker에 적용 성공 |
 | B1-2 | **OpenAPI 스펙 확정** | `openapi.yaml` | 5개 엔드포인트 + 스키마 |
-| B1-3 | Pydantic 모델 | `api/app/schemas.py` | openapi.yaml과 일치 |
+| B1-3 | Pydantic 모델 | `roleB/app/schemas.py` | openapi.yaml과 일치 |
 | B1-4 | **목 API 배포** (하드코딩 응답) | Render prod URL | **C가 즉시 개발 착수 가능** |
 | B1-5 | **LLM 무료 티어 한도 실측** | 문서 메모 | 분당/일일 한도 숫자 확정 |
 
@@ -430,7 +441,7 @@ C가 이걸 보고 UI를 만든다. 필드가 다르면 W4 통합 때 전부 다
 
 | # | 작업 | 산출물 | 완료 기준 |
 |---|---|---|---|
-| B2-1 | DB 커넥션 풀 | `api/app/db.py` | psycopg_pool, Render 재시작 견딤 |
+| B2-1 | DB 커넥션 풀 | `roleB/app/db.py` | psycopg_pool, Render 재시작 견딤 |
 | B2-2 | `retrieval.py` — PostGIS 후보 생성 | 코드 | 반경 확대 재시도 포함 |
 | B2-3 | `scoring.py` — 7항 골격 + **재정규화** | 코드 | 옵셔널 항 None 처리 테스트 통과 |
 | B2-4 | `ZONE_BARRIER` 10개 값 확정 | `constants.py` | 5개 zone 전 조합 |
@@ -558,9 +569,9 @@ docker run -d --name yongsan-db -p 5432:5432 `
   pgvector/pgvector:pg16
 
 psql -h localhost -U postgres -d yongsan -f db/migrations/001_init.sql
-python -m batch.jobs.load_seeds          # A가 만든 시드 적재
+python -m roleA.jobs.load_seeds          # A가 만든 시드 적재
 
-cd api
+cd roleB
 uvicorn app.main:app --reload --port 8000
 pytest tests/ -v
 ```

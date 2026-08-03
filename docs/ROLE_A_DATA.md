@@ -55,17 +55,20 @@
 
 | 구분 | 대상 |
 |---|---|
-| ✅ **내 소유** | `batch/` 전체, `seeds/`, `poi` · `review_chunk` · `segment_affinity` · `hotspot_snapshot` 테이블의 **데이터 적재** |
+| ✅ **내 소유** | `roleA/` 전체, `seeds/`, `poi` · `review_chunk` · `segment_affinity` · `hotspot_snapshot` 테이블의 **데이터 적재** |
 | 🤝 **공동 (3인 합의 필요)** | `db/migrations/*.sql` (스키마 변경 시 반드시 PR + 3인 리뷰) |
-| ❌ **건드리지 않음** | `api/` (B 소유) · `web/` (C 소유) · `openapi.yaml` (B 소유) |
+| ❌ **건드리지 않음** | `roleB/` (B 소유) · `roleC/` (C 소유) · `openapi.yaml` (B 소유) |
 
 ---
 
 ## 3. 레포 구조 (A 담당 부분)
 
+> **폴더는 역할 기준으로 나뉜다.** `roleA/`(데이터) · `roleB/`(엔진) · `roleC/`(웹).
+> `db/`와 `seeds/`는 루트에 두고 공유한다. 각 폴더의 `README.md`에 소유 규칙이 요약되어 있다.
+
 ```
-yongsan-place-agent/
-├── batch/                         ← A 소유
+Dacos_WhereToGo/
+├── roleA/                         ← A 소유 (데이터 파이프라인)
 │   ├── common/
 │   │   ├── db.py                  # psycopg 커넥션, upsert 헬퍼
 │   │   ├── http.py                # 재시도·백오프 래퍼
@@ -91,10 +94,13 @@ yongsan-place-agent/
 ├── seeds/                         ← A가 W1에 제공 (B가 소비)
 │   ├── poi_seed.json
 │   └── review_seed.json
-└── db/migrations/                 ← 공동
+├── db/migrations/                 ← 공동 (읽기만, 변경은 PR)
+├── roleB/                         ← B 소유. 건드리지 않음
+├── roleC/                         ← C 소유. 건드리지 않음
+└── docs/                          ← 설계 문서
 ```
 
-**실행 규약:** 모든 job은 `python -m batch.jobs.<job_name> [--dry-run] [--limit N]` 형태로 실행 가능해야 한다.
+**실행 규약:** 모든 job은 `python -m roleA.jobs.<job_name> [--dry-run] [--limit N]` 형태로 실행 가능해야 한다.
 
 ---
 
@@ -195,9 +201,9 @@ ZONE_BY_DONG = {
 | # | 작업 | 산출물 | 완료 기준 |
 |---|---|---|---|
 | A1-1 | API 키 발급 신청 (전부) | `.env.example` 갱신 | 아래 키 6종 발급 완료 |
-| A1-2 | **`서울시 주요 121장소 목록.xlsx` 다운로드 → 용산 지점 확정** | `batch/data/yongsan_hotspots.json` | 지점명·코드 목록 확정 |
-| A1-3 | 상가정보 CSV 다운로드 · 컬럼 확인 | `batch/data/store_info.csv` | 용산구 행 수 확인 |
-| A1-4 | `batch/` 스캐폴딩 + `common/` 4개 모듈 | 코드 | `python -m batch.jobs.ingest_poi --dry-run` 이 에러 없이 종료 |
+| A1-2 | **`서울시 주요 121장소 목록.xlsx` 다운로드 → 용산 지점 확정** | `roleA/data/yongsan_hotspots.json` | 지점명·코드 목록 확정 |
+| A1-3 | 상가정보 CSV 다운로드 · 컬럼 확인 | `roleA/data/store_info.csv` | 용산구 행 수 확인 |
+| A1-4 | `roleA/` 스캐폴딩 + `common/` 4개 모듈 | 코드 | `python -m roleA.jobs.ingest_poi --dry-run` 이 에러 없이 종료 |
 | A1-5 | **시드 POI 100건 + 시드 리뷰 커밋** | `seeds/*.json` | **B가 즉시 사용 가능** |
 
 **발급할 키 6종**
@@ -437,7 +443,7 @@ quality_score = s_bayes * (log1p(mention_count) / log1p(MENTION_P95))
 | A5-1 | `build_query_cache.py` — 쿼리 72종 사전 임베딩 | `query_vector_cache` | 72행 적재 |
 | A5-2 | 결측 보정 — 리뷰 부족 POI 기본값 채움 | SQL/코드 | `attr_confidence` 재계산 |
 | A5-3 | `keepalive_db.py` + GH Actions 일일 cron | 워크플로 | Supabase 7일 일시정지 방지 |
-| A5-4 | 커버리지·품질 리포트 | `batch/reports/coverage.md` | W6 발표 자료용 수치 |
+| A5-4 | 커버리지·품질 리포트 | `roleA/reports/coverage.md` | W6 발표 자료용 수치 |
 
 **A5-1 — 왜 72개인가**
 
@@ -500,8 +506,8 @@ docker run -d --name yongsan-db -p 5432:5432 `
 psql -h localhost -U postgres -d yongsan -f db/migrations/001_init.sql
 
 # 배치 실행
-python -m batch.jobs.ingest_poi --dry-run
-python -m batch.jobs.extract_attributes --limit 50
+python -m roleA.jobs.ingest_poi --dry-run
+python -m roleA.jobs.extract_attributes --limit 50
 ```
 
 > `pgvector/pgvector` 이미지에 PostGIS가 없으면 `postgis/postgis:16-3.4` 로 시작해 `CREATE EXTENSION vector;`를 수동 설치한다. **W1에 어느 쪽으로 갈지 확정해서 B·C에게 공유**할 것.

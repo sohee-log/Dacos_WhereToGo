@@ -60,9 +60,9 @@
 
 | 구분 | 대상 |
 |---|---|
-| ✅ **내 소유** | `web/` 전체, `.github/workflows/`, 배포 인프라 전체, 평가 시나리오 |
+| ✅ **내 소유** | `roleC/` 전체, `.github/workflows/`, 배포 인프라 전체, 평가 시나리오 |
 | 🤝 **공동 (3인 합의)** | `db/migrations/*.sql` (읽기만), `openapi.yaml` (B가 관리, 변경 요청은 PR) |
-| ❌ **건드리지 않음** | `api/` (B 소유) · `batch/` (A 소유) |
+| ❌ **건드리지 않음** | `roleB/` (B 소유) · `roleA/` (A 소유) |
 
 ---
 
@@ -70,11 +70,15 @@
 
 ### 3.1 레포 구조 (C가 W1에 만든다)
 
+> **폴더는 역할 기준으로 나뉜다.** `roleA/`(데이터) · `roleB/`(엔진) · `roleC/`(웹).
+> `db/`·`seeds/`·`.github/`는 루트에 둔다. Vercel 배포 루트는 `roleC/`, Render 배포 루트는 `roleB/`다.
+
 ```
-yongsan-place-agent/
-├── api/                    # B 소유
-├── batch/                  # A 소유
-├── web/                    ← C 소유
+Dacos_WhereToGo/
+├── roleA/                      # A 소유. 건드리지 않음
+├── roleB/                      # B 소유. 건드리지 않음
+│   └── openapi.yaml            #   ← 타입의 출처
+├── roleC/                      ← C 소유
 │   ├── app/
 │   │   ├── layout.tsx
 │   │   ├── page.tsx              # 랜딩 → 온보딩 진입
@@ -94,20 +98,17 @@ yongsan-place-agent/
 │   │   ├── types.ts              # openapi.yaml 기반 타입
 │   │   └── constants.ts          # 고정 어휘 (B와 동일)
 │   ├── .env.example
-│   └── package.json
-├── db/migrations/          # 공동
-├── seeds/                  # A 제공
-├── docs/
-├── openapi.yaml            # B 관리
-├── .github/workflows/      ← C 소유
+│   ├── package.json
+│   └── README.md
+├── db/migrations/              # 공동 (읽기만)
+├── seeds/                      # A 제공
+├── docs/                       # 설계 문서
+├── .github/workflows/          ← C 소유
 │   ├── ci.yml
 │   ├── batch-citydata.yml
 │   └── keepalive.yml
-├── .gitleaks.toml          ← C 소유
-├── PLAN.md
-├── ROLE_A_DATA.md
-├── ROLE_B_ENGINE.md
-└── ROLE_C_WEB.md
+├── .gitleaks.toml              ← C 소유
+└── README.md
 ```
 
 ### 3.2 API 계약 (B 제공 — 이 형태로 개발한다)
@@ -222,7 +223,7 @@ export const BUDGET_LABELS = ["1만원 이하", "1~3만원", "3~5만원", "5만�
 | C1-1 | **public 레포 생성 + 모노레포 구조** | 레포 | §3.1 구조 |
 | C1-2 | **`gitleaks` 프리커밋 훅** | `.gitleaks.toml` | 첫 커밋보다 먼저 |
 | C1-3 | 무료 티어 계정 개설 + **§4 표 실검증** | 문서 갱신 | 결제수단 요구 시 즉시 교체 |
-| C1-4 | Next.js 스캐폴딩 | `web/` | `npm run dev` 동작 |
+| C1-4 | Next.js 스캐폴딩 | `roleC/` | `npm run dev` 동작 |
 | C1-5 | **Vercel + Render + Supabase 개통, 빈 앱 prod 배포** | prod URL | **외부에서 접속 가능** |
 | C1-6 | CI 워크플로 (lint + build) | `.github/workflows/ci.yml` | PR에서 동작 |
 
@@ -232,8 +233,8 @@ export const BUDGET_LABELS = ["1만원 이하", "1~3만원", "3~5만원", "5만�
 
 ```
 1. Supabase 프로젝트 생성 → DATABASE_URL 확보 → B에게 전달
-2. Render 웹서비스 생성 → api/ 디렉터리 지정 → DATABASE_URL 환경변수 주입
-3. Vercel 프로젝트 생성 → web/ 디렉터리 지정 → NEXT_PUBLIC_API_BASE 주입
+2. Render 웹서비스 생성 → roleB/ 디렉터리 지정 → DATABASE_URL 환경변수 주입
+3. Vercel 프로젝트 생성 → roleC/ 디렉터리 지정 → NEXT_PUBLIC_API_BASE 주입
 4. Render /health 에 curl → 200 확인
 5. Vercel 배포본에서 API 호출 → CORS 확인
 ```
@@ -241,11 +242,11 @@ export const BUDGET_LABELS = ["1만원 이하", "1~3만원", "3~5만원", "5만�
 **`.env.example` (커밋)**
 
 ```bash
-# web/
+# roleC/
 NEXT_PUBLIC_API_BASE=https://yongsan-api.onrender.com
 NEXT_PUBLIC_KAKAO_JS_KEY=            # 도메인 제한 필수
 
-# api/ (Render 환경변수 — 절대 커밋 금지)
+# roleB/ (Render 환경변수 — 절대 커밋 금지)
 DATABASE_URL=
 KAKAO_REST_KEY=
 NAVER_CLIENT_ID=
@@ -411,7 +412,7 @@ UptimeRobot이 있어도 첫 요청이 느릴 수 있다. 3초 넘으면 "서버
 ## 8. 로컬 실행
 
 ```powershell
-cd web
+cd roleC
 npm install
 npm run dev            # http://localhost:3000
 
