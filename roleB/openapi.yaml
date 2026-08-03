@@ -1,0 +1,409 @@
+openapi: 3.1.0
+
+info:
+  title: WhereToGo API
+  version: 0.1.0
+  description: |
+    용산 컨텍스트 기반 장소 추천 API.
+
+    이 문서가 roleB(엔진)와 roleC(웹) 사이의 계약이다.
+    변경은 PR로만 하며, 병합 전 양쪽이 확인한다.
+
+    설계 배경은 docs/PLAN.md, 구현 지침은 docs/ROLE_B_ENGINE.md 참조.
+
+servers:
+  - url: http://localhost:8000
+    description: 로컬
+  - url: https://wheretogo-api.onrender.com
+    description: prod (Render Free — 15분 무접속 시 슬립)
+
+tags:
+  - name: recommend
+  - name: user
+  - name: system
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: 헬스체크
+      description: UptimeRobot이 5분마다 호출한다. DB 접속까지 확인한다.
+      responses:
+        "200":
+          description: 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  db:     { type: boolean }
+
+  /api/onboarding:
+    post:
+      tags: [user]
+      summary: 온보딩 제출
+      description: |
+        5문항을 받아 user_profile을 만들고 taste_vector를 계산한다.
+        문항은 5개를 넘기지 않는다 (이탈 방지).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingRequest" }
+      responses:
+        "200":
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id]
+                properties:
+                  user_id: { type: string, example: u_a91f3c }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/context/now:
+    get:
+      tags: [recommend]
+      summary: 현재/예정 시각 컨텍스트
+      description: |
+        결과 화면 상단 배너용. 날씨·대기질은 citydata와 기상청을 병합한다.
+
+        - 2시간 이내: citydata WEATHER_STTS (실황)
+        - 3시간 이상 뒤: 기상청 단기예보
+        - 혼잡도: citydata FCST_PPLTN (12시간 예측)
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number } }
+        - { name: lng, in: query, required: true, schema: { type: number } }
+        - name: visit_at
+          in: query
+          required: false
+          description: 생략하면 현재 시각
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Context" }
+
+  /api/recommend:
+    post:
+      tags: [recommend]
+      summary: 장소 추천
+      description: |
+        후보 생성 → 스코어링 → 근거 검색의 3단계를 거쳐 3~5곳을 반환한다.
+
+        후보가 부족하면 반경을 1.6배로 넓혀 최대 2회 재시도하고,
+        그래도 부족하면 attr_confidence 기준을 완화한 뒤 low_confidence를 표시한다.
+        **빈 배열을 반환하지 않는다.**
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecommendRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecommendResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429":
+          description: 레이트 리밋 (IP당 분당 10회). 무료 LLM 쿼터 보호용
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/feedback:
+    post:
+      tags: [recommend]
+      summary: 클릭·선택·만족도 기록
+      description: |
+        recommendation_log를 갱신한다.
+        노출됐지만 선택되지 않은 후보는 추천 시점에 이미 기록되어 있다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeedbackRequest" }
+      responses:
+        "204": { description: 기록됨 }
+        "404":
+          description: log_id 없음
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/poi/{poi_id}:
+    get:
+      tags: [recommend]
+      summary: 장소 상세
+      parameters:
+        - { name: poi_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoiDetail" }
+        "404":
+          description: 없음
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+
+  responses:
+    ValidationError:
+      description: 요청 형식 오류
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+
+    # ---- 고정 어휘 -------------------------------------------------------
+    # A(추출) · B(매칭) · C(온보딩)가 같은 어휘를 전제한다.
+    # 확장하려면 3인 합의가 필요하다.
+
+    Purpose:
+      type: string
+      enum: [데이트, 친구모임, 혼자, 가족, 작업, 회식]
+
+    Atmosphere:
+      type: string
+      enum: [조용한, 활기찬, 감성적인, 트렌디한, 로컬한, 넓은, 뷰가좋은, 아늑한, 이국적인, 가성비]
+
+    CongestLevel:
+      type: string
+      enum: [여유, 보통, 약간 붐빔, 붐빔]
+
+    ExplainMode:
+      type: string
+      description: |
+        llm      — 실시간 생성
+        cache    — explanation_cache 히트
+        template — LLM 쿼터 소진으로 템플릿 폴백
+      enum: [llm, cache, template]
+
+    # ---- 공통 -----------------------------------------------------------
+
+    Location:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, format: double, example: 37.5340 }
+        lng: { type: number, format: double, example: 126.9946 }
+
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+        code:   { type: string }
+
+    # ---- 온보딩 ---------------------------------------------------------
+
+    OnboardingRequest:
+      type: object
+      required: [gender, age_band, atmosphere_tags, purpose_tags, budget_band, weather_sensitivity]
+      properties:
+        gender:
+          type: string
+          enum: [M, F]
+        age_band:
+          type: integer
+          enum: [10, 20, 30, 40, 50, 60]
+        atmosphere_tags:
+          type: array
+          items: { $ref: "#/components/schemas/Atmosphere" }
+          minItems: 1
+        purpose_tags:
+          type: array
+          items: { $ref: "#/components/schemas/Purpose" }
+          minItems: 1
+        budget_band:
+          type: integer
+          minimum: 1
+          maximum: 4
+        weather_sensitivity:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: 비 오면 약속을 미루는 편인가. context_fit 개인 가중치로 쓰인다
+
+    # ---- 컨텍스트 -------------------------------------------------------
+
+    Context:
+      type: object
+      required: [weather, pm25_grade, feels_like]
+      properties:
+        weather:
+          type: string
+          example: 비 60%
+        pm25_grade:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: 1 좋음 / 2 보통 / 3 나쁨 / 4 매우나쁨
+        feels_like:
+          type: number
+          format: float
+          example: 27.4
+        rain_prob:
+          type: number
+          format: float
+        sunset:
+          type: string
+          example: "19:42"
+        hotspot:
+          type: [string, "null"]
+          description: 가장 가까운 실시간 도시데이터 지점. 없으면 null
+          example: 이태원 관광특구
+        congest_now:
+          oneOf:
+            - $ref: "#/components/schemas/CongestLevel"
+            - type: "null"
+        congest_forecast_at_visit:
+          oneOf:
+            - $ref: "#/components/schemas/CongestLevel"
+            - type: "null"
+        age_mix_top:
+          type: [string, "null"]
+          example: 20대 31%
+
+    # ---- 추천 -----------------------------------------------------------
+
+    RecommendRequest:
+      type: object
+      required: [user_id, purpose, party_size, budget_band, location, visit_at]
+      properties:
+        user_id:     { type: string }
+        purpose:     { $ref: "#/components/schemas/Purpose" }
+        party_size:  { type: integer, minimum: 1, maximum: 99 }
+        budget_band: { type: integer, minimum: 1, maximum: 4 }
+        location:    { $ref: "#/components/schemas/Location" }
+        visit_at:
+          type: string
+          format: date-time
+          description: 방문 예정 시각. 실측이 아니라 이 시각의 예보로 판단한다
+          example: "2026-08-03T19:00:00+09:00"
+
+    ScoreBreakdown:
+      type: object
+      description: |
+        live_segment와 crowd는 **없을 수 있다.**
+        해당 POI가 실시간 도시데이터 지점 반경 1km 밖이라는 뜻이며,
+        이때 엔진은 두 항을 빼고 나머지 가중치를 재정규화한다.
+        UI에서 undefined를 0으로 렌더링하면 안 된다.
+      required: [segment, purpose, taste, context, quality, distance]
+      properties:
+        segment:      { type: number, format: float }
+        purpose:      { type: number, format: float }
+        taste:        { type: number, format: float }
+        context:      { type: number, format: float }
+        quality:      { type: number, format: float }
+        distance:     { type: number, format: float }
+        live_segment: { type: number, format: float }
+        crowd:        { type: number, format: float }
+
+    Evidence:
+      type: object
+      description: review_chunk.text에서 그대로 발췌한 문장. 생성문이 아니다
+      required: [text, source]
+      properties:
+        text:   { type: string }
+        source: { type: string, example: naver_blog }
+
+    Recommendation:
+      type: object
+      required:
+        [poi_id, name, category, lat, lng, distance_m, score,
+         score_breakdown, reason, evidence, is_exploration, explain_mode]
+      properties:
+        poi_id:     { type: string }
+        name:       { type: string }
+        category:   { type: string, example: 베이커리카페 }
+        lat:        { type: number, format: double }
+        lng:        { type: number, format: double }
+        distance_m: { type: integer, description: 직선거리. 점수에는 zone 배율이 반영된다 }
+        score:      { type: number, format: float }
+        score_breakdown: { $ref: "#/components/schemas/ScoreBreakdown" }
+        reason:
+          type: string
+          example: 비 예보가 있어 완전 실내 공간 위주로 골랐습니다.
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/Evidence" }
+        is_exploration:
+          type: boolean
+          description: 6~20위에서 무작위로 뽑은 탐색 슬롯. 인기 쏠림 방지용
+        explain_mode: { $ref: "#/components/schemas/ExplainMode" }
+        image_url:
+          type: [string, "null"]
+          description: TourAPI 제공 대표 이미지 (있는 경우)
+
+    RecommendResponse:
+      type: object
+      required: [context, results, log_id]
+      properties:
+        context: { $ref: "#/components/schemas/Context" }
+        results:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: { $ref: "#/components/schemas/Recommendation" }
+        log_id:
+          type: integer
+          format: int64
+          description: 피드백 전송 시 이 값을 함께 보낸다
+        low_confidence:
+          type: boolean
+          description: 후보가 부족해 attr_confidence 기준을 완화한 경우 true
+        radius_expanded:
+          type: boolean
+          description: 후보 부족으로 검색 반경을 넓힌 경우 true
+
+    # ---- 피드백 ---------------------------------------------------------
+
+    FeedbackRequest:
+      type: object
+      required: [log_id]
+      properties:
+        log_id:   { type: integer, format: int64 }
+        clicked:  { type: array, items: { type: string } }
+        selected: { type: [string, "null"] }
+        feedback: { type: [integer, "null"], minimum: 1, maximum: 5 }
+
+    # ---- 상세 -----------------------------------------------------------
+
+    PoiDetail:
+      type: object
+      required: [poi_id, name, lat, lng]
+      properties:
+        poi_id:           { type: string }
+        name:             { type: string }
+        category_l1:      { type: string }
+        category_l2:      { type: string }
+        lat:              { type: number, format: double }
+        lng:              { type: number, format: double }
+        dong:             { type: string }
+        zone:             { type: string, enum: [itaewon, yongsan_stn, huam, ichon, cheongpa] }
+        business_hours:   { type: [object, "null"], additionalProperties: true }
+        outdoor_exposure: { type: number, format: float, minimum: 0, maximum: 1 }
+        group_capacity:   { type: integer }
+        noise_level:      { type: [integer, "null"], minimum: 1, maximum: 5 }
+        price_band:       { type: [integer, "null"], minimum: 1, maximum: 4 }
+        purpose_tags:     { type: array, items: { $ref: "#/components/schemas/Purpose" } }
+        atmosphere_tags:  { type: array, items: { $ref: "#/components/schemas/Atmosphere" } }
+        quality_score:    { type: [number, "null"], format: float }
+        mention_count:    { type: integer }
+        attr_confidence:  { type: number, format: float }
+        reviews:
+          type: array
+          description: 광고 판정되지 않은 청크 우선
+          items: { $ref: "#/components/schemas/Evidence" }
+        image_url:        { type: [string, "null"] }
