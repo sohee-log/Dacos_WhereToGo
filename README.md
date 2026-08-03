@@ -125,11 +125,13 @@ Next.js  ─────▶  FastAPI  ─────▶  PostgreSQL
 
 ## 구조
 
+폴더는 역할 기준으로 나뉜다. 각 폴더의 `README.md`에 소유 규칙과 세부 구조가 있다.
+
 ```
-├── api/        추천 엔진 (FastAPI)
-├── web/        웹 클라이언트 (Next.js)
-├── batch/      수집 · 속성 추출 · 임베딩 배치
-├── db/         스키마 마이그레이션
+├── roleA/      데이터 — 수집 · 속성 추출 · 임베딩 배치
+├── roleB/      엔진 — 추천 API (FastAPI)
+├── roleC/      웹 — 클라이언트 (Next.js) · 배포
+├── db/         스키마 마이그레이션 (공동)
 ├── seeds/      개발용 시드 데이터
 └── docs/       설계 문서
 ```
