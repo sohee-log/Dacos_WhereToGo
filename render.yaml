@@ -28,6 +28,11 @@ services:
       # 프론트 도메인이 정해지면 C가 여기에 Vercel URL을 추가한다. * 는 쓰지 않는다.
       - key: CORS_ORIGINS
         value: "http://localhost:3000"
+      # LLM은 W5부터 쓴다. URL·모델명은 시크릿이 아니다 (실측치: roleB/docs/LLM_QUOTA.md)
+      - key: LLM_BASE_URL
+        value: "https://factchat-cloud.mindlogic.ai/v1/gateway"
+      - key: LLM_MODEL
+        value: "gpt-5.4-nano"
       # 아래는 대시보드에서 직접 입력한다 (레포에 값이 남지 않게)
       - key: DATABASE_URL
         sync: false

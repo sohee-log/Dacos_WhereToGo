@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     # --- 외부 API (W3~. 값이 없어도 앱은 떠야 한다) ----------------------
     seoul_citydata_key: str | None = None
     kma_service_key: str | None = None
+    # 게이트웨이는 OpenAI 호환. 경로에 끝 슬래시가 필요하다 (/chat/completions/).
+    # 키만 시크릿이다. URL과 모델명은 공개해도 무방하므로 기본값을 둔다.
     llm_api_key: str | None = None
-    llm_base_url: str | None = None
-    llm_model: str | None = None
+    llm_base_url: str = "https://factchat-cloud.mindlogic.ai/v1/gateway"
+    llm_model: str = "gpt-5.4-nano"
     # 강제 폴백 스위치. W5의 템플릿 폴백 테스트(B5-5)에서 쓴다.
     llm_force_fail: bool = False
 
