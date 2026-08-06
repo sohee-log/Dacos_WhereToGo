@@ -1,0 +1,6 @@
+# 개발·테스트 전용. 배포 이미지에는 설치하지 않는다.
+-r requirements.txt
+
+pytest>=8.3,<9
+httpx>=0.27,<0.29        # fastapi TestClient
+PyYAML>=6.0,<7           # openapi.yaml ↔ schemas.py 계약 대조 테스트

@@ -1,0 +1,13 @@
+# 시크릿 — 레포가 public이므로 예외가 없다
+.env
+.env.local
+docs/llm_quota_report.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

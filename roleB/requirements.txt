@@ -1,0 +1,13 @@
+# 런타임 의존성 (Render 배포에 실제로 설치되는 것)
+#
+# 임베딩 모델(bge-m3, 약 2GB)은 여기 절대 들어가지 않는다.
+# Render Free 메모리로는 뜨지 않는다. 쿼리 벡터는 query_vector_cache에서 조회한다.
+# (ROLE_B §1.2 · PLAN.md §11.3)
+
+fastapi>=0.115,<0.117
+uvicorn[standard]>=0.32,<0.36
+pydantic>=2.9,<3
+pydantic-settings>=2.6,<3
+
+# W2에서 DB를 붙일 때 주석을 푼다. W1 목 서버는 DB 없이 뜬다.
+# psycopg[binary,pool]>=3.2,<4

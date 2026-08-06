@@ -1,0 +1,39 @@
+# Render Blueprint — API 서버 (roleB)
+#
+# Blueprint 파일은 레포 루트에 있어야 인식된다. 배포 루트는 roleB/ 다.
+# Render 대시보드 > New > Blueprint > 이 레포 선택 → 아래 정의대로 서비스가 생성된다.
+#
+# 무료 티어 주의 (PLAN.md §9.2):
+#   - 15분 무접속 시 슬립 → 콜드스타트 약 1분. UptimeRobot이 5분마다 /health를 친다
+#   - 결제수단을 요구하는 화면이 나오면 즉시 중단하고 HF Spaces(Docker)로 전환한다
+#   - 시크릿은 여기 쓰지 않는다. sync: false 항목은 대시보드에서 직접 넣는다
+
+services:
+  - type: web
+    name: wheretogo-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: roleB
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # W1은 목 모드. W2에 DATABASE_URL을 넣으면서 false로 내린다.
+      - key: MOCK_MODE
+        value: "true"
+      # 프론트 도메인이 정해지면 C가 여기에 Vercel URL을 추가한다. * 는 쓰지 않는다.
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000"
+      # 아래는 대시보드에서 직접 입력한다 (레포에 값이 남지 않게)
+      - key: DATABASE_URL
+        sync: false
+      - key: SEOUL_CITYDATA_KEY
+        sync: false
+      - key: KMA_SERVICE_KEY
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
