@@ -16,10 +16,12 @@
 | B1-2 | OpenAPI 스펙 | ✅ | [`openapi.yaml`](openapi.yaml) |
 | B1-3 | Pydantic 모델 | ✅ | [`app/schemas.py`](app/schemas.py) — 계약 대조 테스트 포함 |
 | B1-4 | 목 API | ✅ 코드 완료 / ⏳ 배포 대기 | [`app/`](app) · [`../render.yaml`](../render.yaml) · [배포 절차](docs/DEPLOY_MOCK.md) |
-| B1-5 | LLM 한도 실측 | ⏳ **키 조달 후 측정** | [측정 스크립트](tools/llm_quota_probe.py) · [기록 문서](docs/LLM_QUOTA.md) |
+| B1-5 | LLM 한도 실측 | ✅ | [실측 결과](docs/LLM_QUOTA.md) · [처리량](tools/llm_quota_probe.py) · [1건 실비용](tools/extract_cost_probe.py) |
 
-> B1-5는 LLM 제공자와 키가 정해져야 잴 수 있다. **스크립트와 기록 양식은 준비되어 있고,
-> 키가 생기면 명령 한 줄로 끝난다.** 이 숫자가 A의 W3 배치 일정을 결정하므로 우선순위가 높다.
+> **B1-5 결과 요약 (A에게):** FactChat 게이트웨이 · `gpt-5.4-nano` · POI당 **1,038토큰 / 2.3초**.
+> T1 800 POI가 **직렬 31분, 동시 8이면 4분**이다. §8.2의 "야간 배치 2~3일" 전제는 폐기해도 된다.
+> 대신 **`response_format`을 `json_schema` + `strict: true`로 강제해야 한다** — 안 하면 nano가
+> 스키마를 지어낸다. 자세한 실패 모드와 호출 형식은 [docs/LLM_QUOTA.md](docs/LLM_QUOTA.md).
 
 ---
 
