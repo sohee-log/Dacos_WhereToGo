@@ -163,7 +163,7 @@ Next.js  ─────▶  FastAPI  ─────▶  PostgreSQL
 
 ---
 
-# 📌 Dacos WhereToGo (웹 프론트엔드)
+# Dacos WhereToGo 
 - **배포 주소 (Prod URL):** https://dacos-wheretogo-web.vercel.app
 
 ---
