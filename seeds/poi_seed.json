@@ -1,0 +1,2987 @@
+[
+  {
+    "poi_id": "MA010120220807797676",
+    "name": "볼레로",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5348136515052,
+    "lng": 126.998483894913,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.03,
+    "group_capacity": 6,
+    "noise_level": 2,
+    "purpose_tags": [
+      "친구모임",
+      "회식",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.79,
+    "mention_count": 13,
+    "review_count": 2,
+    "attr_confidence": 0.41,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202305A0129614",
+    "name": "뉴엘컴퍼니",
+    "category_l1": "문화",
+    "category_l2": "헬스장",
+    "lat": 37.5386964644381,
+    "lng": 126.989035955214,
+    "dong": "이태원2동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.7,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "아늑한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.79,
+    "mention_count": 136,
+    "review_count": 2,
+    "attr_confidence": 0.62,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0106202301A2416662",
+    "name": "스타벅스",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5334169748806,
+    "lng": 127.005645689028,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.54,
+    "group_capacity": 2,
+    "noise_level": 2,
+    "purpose_tags": [
+      "가족",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "조용한",
+      "트렌디한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.78,
+    "mention_count": 30,
+    "review_count": 2,
+    "attr_confidence": 0.48,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800279557",
+    "name": "제이알팝",
+    "category_l1": "음식",
+    "category_l2": "생맥주 전문",
+    "lat": 37.5340836836017,
+    "lng": 126.993720670735,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.49,
+    "group_capacity": 2,
+    "noise_level": 3,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "아늑한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.6,
+    "mention_count": 35,
+    "review_count": 2,
+    "attr_confidence": 0.88,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202305A0183707",
+    "name": "스톡앤스톤드",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5348316757243,
+    "lng": 126.998857263801,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.04,
+    "group_capacity": 10,
+    "noise_level": 2,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "감성적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.56,
+    "mention_count": 86,
+    "review_count": 2,
+    "attr_confidence": 0.72,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202301A0011474",
+    "name": "카페르상스",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5337504606302,
+    "lng": 127.002149670725,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.43,
+    "group_capacity": 8,
+    "noise_level": 5,
+    "purpose_tags": [
+      "혼자",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.71,
+    "mention_count": 15,
+    "review_count": 2,
+    "attr_confidence": 0.8,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220808086501",
+    "name": "샘라이언",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5350657067937,
+    "lng": 126.992555220119,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.13,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "작업",
+      "친구모임",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "가성비"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.75,
+    "mention_count": 61,
+    "review_count": 2,
+    "attr_confidence": 0.51,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800276324",
+    "name": "비너스",
+    "category_l1": "음식",
+    "category_l2": "일반 유흥 주점",
+    "lat": 37.5334170328008,
+    "lng": 126.995734619709,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.41,
+    "group_capacity": 2,
+    "noise_level": 3,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "조용한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.85,
+    "mention_count": 75,
+    "review_count": 2,
+    "attr_confidence": 0.48,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812743203",
+    "name": "플랜트",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.533146668556,
+    "lng": 126.994229877731,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.36,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "넓은"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.82,
+    "mention_count": 26,
+    "review_count": 2,
+    "attr_confidence": 0.87,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202506A0035621",
+    "name": "와이서울",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5342009072638,
+    "lng": 126.995836402185,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.55,
+    "group_capacity": 4,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "뷰가좋은",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.78,
+    "mention_count": 97,
+    "review_count": 2,
+    "attr_confidence": 0.59,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202212A0055150",
+    "name": "아미디한남",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.5376968226992,
+    "lng": 127.003088900179,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.88,
+    "group_capacity": 10,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "조용한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.61,
+    "mention_count": 110,
+    "review_count": 2,
+    "attr_confidence": 0.82,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220810119180",
+    "name": "로또용산한남점",
+    "category_l1": "문화",
+    "category_l2": "복권 발행/판매업",
+    "lat": 37.5342546938496,
+    "lng": 127.00905130609,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.46,
+    "group_capacity": 8,
+    "noise_level": 5,
+    "purpose_tags": [
+      "혼자",
+      "가족",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "조용한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.94,
+    "mention_count": 93,
+    "review_count": 2,
+    "attr_confidence": 0.77,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220806513597",
+    "name": "쥬에",
+    "category_l1": "음식",
+    "category_l2": "중국집",
+    "lat": 37.5374889396568,
+    "lng": 127.012796836621,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.56,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.78,
+    "mention_count": 102,
+    "review_count": 2,
+    "attr_confidence": 0.84,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202307A0062194",
+    "name": "로기",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5381112953171,
+    "lng": 127.002568440373,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.15,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "감성적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.59,
+    "mention_count": 189,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812053244",
+    "name": "짐스포츠펍",
+    "category_l1": "음식",
+    "category_l2": "베트남식 전문",
+    "lat": 37.5334170328008,
+    "lng": 126.995734619709,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.47,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "작업",
+      "가족",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "활기찬"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.8,
+    "mention_count": 91,
+    "review_count": 2,
+    "attr_confidence": 0.72,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220804926153",
+    "name": "호박식당한남점",
+    "category_l1": "음식",
+    "category_l2": "소고기 구이/찜",
+    "lat": 37.5340926995725,
+    "lng": 127.00616618894,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.59,
+    "group_capacity": 2,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.94,
+    "mention_count": 116,
+    "review_count": 2,
+    "attr_confidence": 0.72,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220803643381",
+    "name": "케익갤러리",
+    "category_l1": "음식",
+    "category_l2": "빵/도넛",
+    "lat": 37.5408773672738,
+    "lng": 127.002489329321,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.21,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "친구모임",
+      "가족",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "넓은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.87,
+    "mention_count": 71,
+    "review_count": 2,
+    "attr_confidence": 0.88,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220801333666",
+    "name": "하모니마트한남점",
+    "category_l1": "쇼핑",
+    "category_l2": "슈퍼마켓",
+    "lat": 37.5319934073191,
+    "lng": 127.005340109364,
+    "dong": "한남동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.93,
+    "group_capacity": 8,
+    "noise_level": 1,
+    "purpose_tags": [
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "로컬한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.82,
+    "mention_count": 7,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220813775105",
+    "name": "매니아스트리트1",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5390568697426,
+    "lng": 126.989092476733,
+    "dong": "이태원2동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 6,
+    "noise_level": 2,
+    "purpose_tags": [
+      "가족",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "조용한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.82,
+    "mention_count": 52,
+    "review_count": 2,
+    "attr_confidence": 0.48,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202504A0099971",
+    "name": "미친",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5336513029368,
+    "lng": 126.996017457403,
+    "dong": "이태원1동",
+    "zone": "itaewon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.56,
+    "group_capacity": 6,
+    "noise_level": 3,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.69,
+    "mention_count": 108,
+    "review_count": 2,
+    "attr_confidence": 0.63,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0106202301A1594452",
+    "name": "파차마마",
+    "category_l1": "쇼핑",
+    "category_l2": "장난감 소매업",
+    "lat": 37.5333331801421,
+    "lng": 126.974102269306,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.07,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자",
+      "회식",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.61,
+    "mention_count": 71,
+    "review_count": 2,
+    "attr_confidence": 0.89,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220808710648",
+    "name": "비어드파파",
+    "category_l1": "음식",
+    "category_l2": "생맥주 전문",
+    "lat": 37.5548394905799,
+    "lng": 126.971729524861,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.29,
+    "group_capacity": 6,
+    "noise_level": 4,
+    "purpose_tags": [
+      "회식",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "뷰가좋은",
+      "활기찬"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.81,
+    "mention_count": 79,
+    "review_count": 2,
+    "attr_confidence": 0.44,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202211A0095884",
+    "name": "한강버거",
+    "category_l1": "음식",
+    "category_l2": "버거",
+    "lat": 37.5348380177292,
+    "lng": 126.974871115927,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.63,
+    "group_capacity": 8,
+    "noise_level": 5,
+    "purpose_tags": [
+      "회식",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "트렌디한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.83,
+    "mention_count": 166,
+    "review_count": 2,
+    "attr_confidence": 0.8,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800319224",
+    "name": "리더스스타",
+    "category_l1": "문화",
+    "category_l2": "골프 연습장",
+    "lat": 37.5237342527968,
+    "lng": 126.962046416579,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.29,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "가족",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "이국적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.88,
+    "mention_count": 116,
+    "review_count": 2,
+    "attr_confidence": 0.85,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0106202201A1176245",
+    "name": "리김밥아모레퍼시픽점",
+    "category_l1": "음식",
+    "category_l2": "김밥/만두/분식",
+    "lat": 37.5287908181047,
+    "lng": 126.968673452479,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.43,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "이국적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.85,
+    "mention_count": 131,
+    "review_count": 2,
+    "attr_confidence": 0.49,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800286521",
+    "name": "GS25",
+    "category_l1": "쇼핑",
+    "category_l2": "편의점",
+    "lat": 37.5540467547005,
+    "lng": 126.972329631878,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.77,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "가성비"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.75,
+    "mention_count": 76,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812837123",
+    "name": "소정숙의소문난맛집",
+    "category_l1": "음식",
+    "category_l2": "백반/한정식",
+    "lat": 37.5253472949589,
+    "lng": 126.962826181694,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.94,
+    "group_capacity": 10,
+    "noise_level": 1,
+    "purpose_tags": [
+      "작업",
+      "회식",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "뷰가좋은",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.84,
+    "mention_count": 177,
+    "review_count": 2,
+    "attr_confidence": 0.56,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800263268",
+    "name": "커피다",
+    "category_l1": "문화",
+    "category_l2": "복권 발행/판매업",
+    "lat": 37.5530564983713,
+    "lng": 126.976189086148,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.1,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "작업",
+      "혼자",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.74,
+    "mention_count": 114,
+    "review_count": 2,
+    "attr_confidence": 0.68,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202410A0014943",
+    "name": "두리화원",
+    "category_l1": "쇼핑",
+    "category_l2": "꽃집",
+    "lat": 37.5281778252738,
+    "lng": 126.967519760974,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.7,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "감성적인"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.84,
+    "mention_count": 110,
+    "review_count": 2,
+    "attr_confidence": 0.8,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800270204",
+    "name": "데토네이터",
+    "category_l1": "쇼핑",
+    "category_l2": "장난감 소매업",
+    "lat": 37.5327884965563,
+    "lng": 126.959564082485,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.62,
+    "group_capacity": 2,
+    "noise_level": 3,
+    "purpose_tags": [
+      "친구모임",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "활기찬",
+      "트렌디한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.79,
+    "mention_count": 134,
+    "review_count": 2,
+    "attr_confidence": 0.41,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800274987",
+    "name": "숯불태능갈비",
+    "category_l1": "음식",
+    "category_l2": "돼지고기 구이/찜",
+    "lat": 37.5266180859811,
+    "lng": 126.964047352795,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.74,
+    "group_capacity": 4,
+    "noise_level": 3,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "넓은",
+      "로컬한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.94,
+    "mention_count": 184,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800285965",
+    "name": "광히카리",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5254650013774,
+    "lng": 126.964704048828,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.5,
+    "group_capacity": 10,
+    "noise_level": 2,
+    "purpose_tags": [
+      "가족",
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "가성비"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.74,
+    "mention_count": 137,
+    "review_count": 2,
+    "attr_confidence": 0.65,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220809154080",
+    "name": "성약출판사",
+    "category_l1": "쇼핑",
+    "category_l2": "서점",
+    "lat": 37.5502356719877,
+    "lng": 126.972930817835,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.87,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "친구모임",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "활기찬",
+      "아늑한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.76,
+    "mention_count": 76,
+    "review_count": 2,
+    "attr_confidence": 0.62,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800284274",
+    "name": "태향중화요리",
+    "category_l1": "음식",
+    "category_l2": "중국집",
+    "lat": 37.5531732955318,
+    "lng": 126.974593353154,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.44,
+    "group_capacity": 2,
+    "noise_level": 5,
+    "purpose_tags": [
+      "회식",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "활기찬",
+      "가성비"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.85,
+    "mention_count": 75,
+    "review_count": 2,
+    "attr_confidence": 0.65,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220813923235",
+    "name": "삼삼구이",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5346032543639,
+    "lng": 126.972608357704,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.95,
+    "group_capacity": 4,
+    "noise_level": 3,
+    "purpose_tags": [
+      "데이트",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "로컬한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.85,
+    "mention_count": 117,
+    "review_count": 2,
+    "attr_confidence": 0.64,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800309844",
+    "name": "게임1번지",
+    "category_l1": "쇼핑",
+    "category_l2": "장난감 소매업",
+    "lat": 37.5327884965563,
+    "lng": 126.959564082485,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.2,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "트렌디한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.77,
+    "mention_count": 174,
+    "review_count": 2,
+    "attr_confidence": 0.65,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220814339433",
+    "name": "파스쿠찌용산삼각지점",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5358734273927,
+    "lng": 126.971600913588,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.3,
+    "group_capacity": 6,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "감성적인"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.86,
+    "mention_count": 53,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220808456256",
+    "name": "포차살롱",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5259963324895,
+    "lng": 126.963844019258,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.35,
+    "group_capacity": 4,
+    "noise_level": 2,
+    "purpose_tags": [
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "감성적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.69,
+    "mention_count": 56,
+    "review_count": 2,
+    "attr_confidence": 0.45,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220810362364",
+    "name": "데이원커피바",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5422710277008,
+    "lng": 126.973759717741,
+    "dong": "남영동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.54,
+    "group_capacity": 8,
+    "noise_level": 3,
+    "purpose_tags": [
+      "혼자",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "뷰가좋은",
+      "넓은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.77,
+    "mention_count": 103,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202406A0076917",
+    "name": "씨유용산삼각지점",
+    "category_l1": "쇼핑",
+    "category_l2": "편의점",
+    "lat": 37.5328374711503,
+    "lng": 126.973389663864,
+    "dong": "한강로동",
+    "zone": "yongsan_stn",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.34,
+    "group_capacity": 10,
+    "noise_level": 4,
+    "purpose_tags": [
+      "가족",
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "아늑한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.91,
+    "mention_count": 78,
+    "review_count": 2,
+    "attr_confidence": 0.76,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220808430337",
+    "name": "헤헷",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5446331511699,
+    "lng": 126.981747774516,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.98,
+    "group_capacity": 6,
+    "noise_level": 2,
+    "purpose_tags": [
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "감성적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.72,
+    "mention_count": 154,
+    "review_count": 2,
+    "attr_confidence": 0.82,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812938940",
+    "name": "카인드스톤갤러리",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.546650127616,
+    "lng": 126.974878467365,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.09,
+    "group_capacity": 8,
+    "noise_level": 1,
+    "purpose_tags": [
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "감성적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.58,
+    "mention_count": 18,
+    "review_count": 2,
+    "attr_confidence": 0.61,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220803407983",
+    "name": "들",
+    "category_l1": "음식",
+    "category_l2": "베트남식 전문",
+    "lat": 37.549993100036,
+    "lng": 126.97616742767,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.91,
+    "group_capacity": 2,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트",
+      "작업",
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "아늑한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.89,
+    "mention_count": 198,
+    "review_count": 2,
+    "attr_confidence": 0.77,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220807850883",
+    "name": "해방촌노가리",
+    "category_l1": "음식",
+    "category_l2": "생맥주 전문",
+    "lat": 37.5444443417423,
+    "lng": 126.984554107264,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.62,
+    "group_capacity": 2,
+    "noise_level": 3,
+    "purpose_tags": [
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "아늑한",
+      "넓은"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.82,
+    "mention_count": 142,
+    "review_count": 2,
+    "attr_confidence": 0.82,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800709826",
+    "name": "유니피아",
+    "category_l1": "쇼핑",
+    "category_l2": "기념품점",
+    "lat": 37.5491200976167,
+    "lng": 126.981565618402,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.84,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "로컬한",
+      "뷰가좋은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.9,
+    "mention_count": 134,
+    "review_count": 2,
+    "attr_confidence": 0.45,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202301A0063222",
+    "name": "포틀로",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5481189748607,
+    "lng": 126.97593038359,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.19,
+    "group_capacity": 10,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "이국적인",
+      "가성비"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.91,
+    "mention_count": 8,
+    "review_count": 2,
+    "attr_confidence": 0.54,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220801039773",
+    "name": "루도크래프트",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.5484176734575,
+    "lng": 126.983998790052,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.33,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "작업",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "넓은"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.6,
+    "mention_count": 36,
+    "review_count": 2,
+    "attr_confidence": 0.74,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220809974721",
+    "name": "육첩반상남산서울",
+    "category_l1": "음식",
+    "category_l2": "백반/한정식",
+    "lat": 37.5511211299665,
+    "lng": 126.987868517227,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.7,
+    "group_capacity": 6,
+    "noise_level": 2,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "감성적인",
+      "뷰가좋은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.91,
+    "mention_count": 81,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220806458652",
+    "name": "가마솥족발",
+    "category_l1": "음식",
+    "category_l2": "족발/보쌈",
+    "lat": 37.5514438997148,
+    "lng": 126.977140204517,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.09,
+    "group_capacity": 10,
+    "noise_level": 5,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "아늑한",
+      "로컬한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.75,
+    "mention_count": 99,
+    "review_count": 2,
+    "attr_confidence": 0.44,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202505A0049253",
+    "name": "여유스터디카페",
+    "category_l1": "문화",
+    "category_l2": "독서실/스터디 카페",
+    "lat": 37.5483077015471,
+    "lng": 126.97366707169,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.17,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "가성비",
+      "이국적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.65,
+    "mention_count": 159,
+    "review_count": 2,
+    "attr_confidence": 0.82,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220808577391",
+    "name": "프레그릿",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5393449155397,
+    "lng": 126.986444747791,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.56,
+    "group_capacity": 10,
+    "noise_level": 5,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "가성비",
+      "이국적인",
+      "아늑한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.89,
+    "mention_count": 24,
+    "review_count": 2,
+    "attr_confidence": 0.69,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202501A0021407",
+    "name": "레브체형분석운동센터",
+    "category_l1": "문화",
+    "category_l2": "테니스장",
+    "lat": 37.5532818516833,
+    "lng": 126.976709596828,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.72,
+    "group_capacity": 2,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "뷰가좋은",
+      "활기찬"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.78,
+    "mention_count": 163,
+    "review_count": 2,
+    "attr_confidence": 0.68,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220809979267",
+    "name": "참숯화로구이",
+    "category_l1": "음식",
+    "category_l2": "돼지고기 구이/찜",
+    "lat": 37.5464261464002,
+    "lng": 126.981792601248,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.12,
+    "group_capacity": 6,
+    "noise_level": 3,
+    "purpose_tags": [
+      "가족",
+      "데이트",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "넓은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.72,
+    "mention_count": 75,
+    "review_count": 2,
+    "attr_confidence": 0.88,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800106476",
+    "name": "남산아래",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5456607331357,
+    "lng": 126.984882016124,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.97,
+    "group_capacity": 10,
+    "noise_level": 2,
+    "purpose_tags": [
+      "가족",
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "활기찬",
+      "로컬한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.57,
+    "mention_count": 189,
+    "review_count": 2,
+    "attr_confidence": 0.66,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220804375897",
+    "name": "소울링드림캐쳐",
+    "category_l1": "쇼핑",
+    "category_l2": "기념품점",
+    "lat": 37.5475512829856,
+    "lng": 126.975625030301,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.91,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "데이트",
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "가성비"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.71,
+    "mention_count": 85,
+    "review_count": 2,
+    "attr_confidence": 0.44,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220801059640",
+    "name": "지에스25용산소월점",
+    "category_l1": "쇼핑",
+    "category_l2": "편의점",
+    "lat": 37.5464716148162,
+    "lng": 126.984746060623,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.81,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "이국적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.56,
+    "mention_count": 195,
+    "review_count": 2,
+    "attr_confidence": 0.81,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220802277774",
+    "name": "르비스트로남산",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5408496290219,
+    "lng": 126.986829189772,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.83,
+    "group_capacity": 6,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "이국적인",
+      "활기찬"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.91,
+    "mention_count": 106,
+    "review_count": 2,
+    "attr_confidence": 0.42,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220809572163",
+    "name": "주소",
+    "category_l1": "음식",
+    "category_l2": "요리 주점",
+    "lat": 37.5448320457701,
+    "lng": 126.98681717345,
+    "dong": "용산2가동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.2,
+    "group_capacity": 4,
+    "noise_level": 2,
+    "purpose_tags": [
+      "친구모임",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "로컬한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.76,
+    "mention_count": 184,
+    "review_count": 2,
+    "attr_confidence": 0.67,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202305A0135988",
+    "name": "샤워",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.5461734186967,
+    "lng": 126.979088154596,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.45,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "뷰가좋은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.76,
+    "mention_count": 25,
+    "review_count": 2,
+    "attr_confidence": 0.77,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220811673600",
+    "name": "낙원떡집",
+    "category_l1": "음식",
+    "category_l2": "떡/한과",
+    "lat": 37.5503626466824,
+    "lng": 126.976857620578,
+    "dong": "후암동",
+    "zone": "huam",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.91,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "가족",
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "가성비"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.92,
+    "mention_count": 129,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800307212",
+    "name": "김뿌라동부",
+    "category_l1": "음식",
+    "category_l2": "일식 회/초밥",
+    "lat": 37.5179898522624,
+    "lng": 126.977727309166,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.62,
+    "group_capacity": 4,
+    "noise_level": 5,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "가성비",
+      "감성적인",
+      "뷰가좋은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.8,
+    "mention_count": 149,
+    "review_count": 2,
+    "attr_confidence": 0.69,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202507A0007465",
+    "name": "포포맨션",
+    "category_l1": "음식",
+    "category_l2": "김밥/만두/분식",
+    "lat": 37.5194038865172,
+    "lng": 126.975023347242,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.93,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "작업",
+      "데이트",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "넓은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.75,
+    "mention_count": 38,
+    "review_count": 2,
+    "attr_confidence": 0.51,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812593875",
+    "name": "에스이엘스튜디오",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.5266505125289,
+    "lng": 126.995768943958,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.73,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "조용한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.87,
+    "mention_count": 9,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220809609700",
+    "name": "원돈까스우동",
+    "category_l1": "음식",
+    "category_l2": "일식 회/초밥",
+    "lat": 37.5206407757245,
+    "lng": 126.994547579054,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 2,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "작업",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "감성적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.62,
+    "mention_count": 42,
+    "review_count": 2,
+    "attr_confidence": 0.45,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800281750",
+    "name": "랄라",
+    "category_l1": "음식",
+    "category_l2": "빵/도넛",
+    "lat": 37.5208364668559,
+    "lng": 126.974954997084,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.02,
+    "group_capacity": 10,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트",
+      "혼자",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.72,
+    "mention_count": 194,
+    "review_count": 2,
+    "attr_confidence": 0.73,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202502A0074722",
+    "name": "진키즈",
+    "category_l1": "쇼핑",
+    "category_l2": "문구/회화용품 소매업",
+    "lat": 37.5220914206163,
+    "lng": 126.995248835822,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "뷰가좋은",
+      "활기찬"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.67,
+    "mention_count": 13,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202410A0123670",
+    "name": "허밍비",
+    "category_l1": "쇼핑",
+    "category_l2": "꽃집",
+    "lat": 37.520169048337,
+    "lng": 126.971946226801,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.82,
+    "group_capacity": 8,
+    "noise_level": 3,
+    "purpose_tags": [
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "트렌디한",
+      "활기찬",
+      "로컬한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.62,
+    "mention_count": 187,
+    "review_count": 2,
+    "attr_confidence": 0.83,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220803725365",
+    "name": "모어그린",
+    "category_l1": "쇼핑",
+    "category_l2": "꽃집",
+    "lat": 37.5213133487664,
+    "lng": 126.972058920148,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.46,
+    "group_capacity": 10,
+    "noise_level": 1,
+    "purpose_tags": [
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.93,
+    "mention_count": 149,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812845602",
+    "name": "르미야",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.5205120986189,
+    "lng": 126.974921169332,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.25,
+    "group_capacity": 8,
+    "noise_level": 3,
+    "purpose_tags": [
+      "회식",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "이국적인",
+      "뷰가좋은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.85,
+    "mention_count": 34,
+    "review_count": 2,
+    "attr_confidence": 0.81,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220804987922",
+    "name": "우진",
+    "category_l1": "음식",
+    "category_l2": "백반/한정식",
+    "lat": 37.520838993749,
+    "lng": 126.994491004098,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.49,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "트렌디한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.77,
+    "mention_count": 51,
+    "review_count": 2,
+    "attr_confidence": 0.74,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812213039",
+    "name": "디스코바이크",
+    "category_l1": "쇼핑",
+    "category_l2": "자전거 소매업",
+    "lat": 37.5213346151857,
+    "lng": 126.996278292318,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 6,
+    "noise_level": 4,
+    "purpose_tags": [
+      "가족",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "트렌디한",
+      "아늑한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.71,
+    "mention_count": 65,
+    "review_count": 2,
+    "attr_confidence": 0.76,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0106202201A2157222",
+    "name": "한스케익",
+    "category_l1": "음식",
+    "category_l2": "빵/도넛",
+    "lat": 37.5189094721684,
+    "lng": 126.981154515809,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.87,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "넓은",
+      "트렌디한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.9,
+    "mention_count": 22,
+    "review_count": 2,
+    "attr_confidence": 0.55,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202508A0009867",
+    "name": "비에이치씨한강공원이촌",
+    "category_l1": "음식",
+    "category_l2": "치킨",
+    "lat": 37.5153596765789,
+    "lng": 126.982173423616,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.1,
+    "group_capacity": 4,
+    "noise_level": 5,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "이국적인",
+      "로컬한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.77,
+    "mention_count": 100,
+    "review_count": 2,
+    "attr_confidence": 0.57,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800312405",
+    "name": "남유산업주",
+    "category_l1": "문화",
+    "category_l2": "골프 연습장",
+    "lat": 37.5184414088712,
+    "lng": 126.984287986749,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.78,
+    "group_capacity": 10,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "로컬한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.82,
+    "mention_count": 128,
+    "review_count": 2,
+    "attr_confidence": 0.43,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202406A0566363",
+    "name": "이촌닭한마리야",
+    "category_l1": "음식",
+    "category_l2": "닭/오리고기 구이/찜",
+    "lat": 37.5205120986189,
+    "lng": 126.974921169332,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.55,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "회식",
+      "데이트",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "가성비",
+      "트렌디한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.71,
+    "mention_count": 154,
+    "review_count": 2,
+    "attr_confidence": 0.61,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800301736",
+    "name": "이촌마루",
+    "category_l1": "음식",
+    "category_l2": "돼지고기 구이/찜",
+    "lat": 37.5182785744265,
+    "lng": 126.979966943884,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.16,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "뷰가좋은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.84,
+    "mention_count": 149,
+    "review_count": 2,
+    "attr_confidence": 0.57,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220803008566",
+    "name": "충무김밥",
+    "category_l1": "음식",
+    "category_l2": "김밥/만두/분식",
+    "lat": 37.5179545888629,
+    "lng": 126.982319858062,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.18,
+    "group_capacity": 2,
+    "noise_level": 3,
+    "purpose_tags": [
+      "혼자",
+      "데이트",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "넓은",
+      "조용한",
+      "아늑한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.78,
+    "mention_count": 137,
+    "review_count": 2,
+    "attr_confidence": 0.47,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220807153939",
+    "name": "제1보급소",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5216858826905,
+    "lng": 126.99343890403,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.74,
+    "group_capacity": 10,
+    "noise_level": 5,
+    "purpose_tags": [
+      "가족",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "활기찬"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.8,
+    "mention_count": 67,
+    "review_count": 2,
+    "attr_confidence": 0.9,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220810095136",
+    "name": "지에스25동빙고",
+    "category_l1": "쇼핑",
+    "category_l2": "편의점",
+    "lat": 37.5260558707567,
+    "lng": 126.996357248044,
+    "dong": "서빙고동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.19,
+    "group_capacity": 10,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트",
+      "혼자",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "트렌디한"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.84,
+    "mention_count": 100,
+    "review_count": 2,
+    "attr_confidence": 0.77,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202409A0218430",
+    "name": "윤's함박·카레",
+    "category_l1": "음식",
+    "category_l2": "일식 회/초밥",
+    "lat": 37.5190347044647,
+    "lng": 126.976132030021,
+    "dong": "이촌1동",
+    "zone": "ichon",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.93,
+    "mention_count": 78,
+    "review_count": 2,
+    "attr_confidence": 0.49,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812143558",
+    "name": "원효스크린골프",
+    "category_l1": "문화",
+    "category_l2": "골프 연습장",
+    "lat": 37.5338570557418,
+    "lng": 126.950070999467,
+    "dong": "원효로2동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.6,
+    "group_capacity": 6,
+    "noise_level": 1,
+    "purpose_tags": [
+      "회식",
+      "혼자",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "아늑한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.59,
+    "mention_count": 120,
+    "review_count": 2,
+    "attr_confidence": 0.76,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202212A0036991",
+    "name": "신전떡볶이산천점",
+    "category_l1": "음식",
+    "category_l2": "김밥/만두/분식",
+    "lat": 37.5345516558702,
+    "lng": 126.952073145621,
+    "dong": "원효로2동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.09,
+    "group_capacity": 8,
+    "noise_level": 3,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "뷰가좋은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.69,
+    "mention_count": 18,
+    "review_count": 2,
+    "attr_confidence": 0.48,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220810898593",
+    "name": "606엠피코",
+    "category_l1": "음식",
+    "category_l2": "일식 회/초밥",
+    "lat": 37.535032861588,
+    "lng": 126.962199090847,
+    "dong": "원효로1동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.01,
+    "group_capacity": 2,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "넓은",
+      "감성적인"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.94,
+    "mention_count": 112,
+    "review_count": 2,
+    "attr_confidence": 0.41,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220813174103",
+    "name": "더함",
+    "category_l1": "음식",
+    "category_l2": "백반/한정식",
+    "lat": 37.5449725097695,
+    "lng": 126.967648264903,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.83,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "감성적인"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.61,
+    "mention_count": 83,
+    "review_count": 2,
+    "attr_confidence": 0.71,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202212A0076049",
+    "name": "탁지은",
+    "category_l1": "쇼핑",
+    "category_l2": "예술품 소매업",
+    "lat": 37.5454673275581,
+    "lng": 126.965079358457,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "회식",
+      "친구모임",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "아늑한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.61,
+    "mention_count": 39,
+    "review_count": 2,
+    "attr_confidence": 0.86,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202409A0113959",
+    "name": "달달해청파24시",
+    "category_l1": "쇼핑",
+    "category_l2": "슈퍼마켓",
+    "lat": 37.5497029433257,
+    "lng": 126.968347841395,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 2,
+    "noise_level": 1,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "트렌디한",
+      "뷰가좋은"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.67,
+    "mention_count": 175,
+    "review_count": 2,
+    "attr_confidence": 0.83,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220811991315",
+    "name": "앤디캔디솜사탕핫플와플",
+    "category_l1": "음식",
+    "category_l2": "김밥/만두/분식",
+    "lat": 37.5449619120801,
+    "lng": 126.962295919709,
+    "dong": "효창동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.51,
+    "group_capacity": 4,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "넓은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.8,
+    "mention_count": 152,
+    "review_count": 2,
+    "attr_confidence": 0.76,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202604A0035100",
+    "name": "우연고깃집정육식당",
+    "category_l1": "음식",
+    "category_l2": "소고기 구이/찜",
+    "lat": 37.5361957865605,
+    "lng": 126.964235100397,
+    "dong": "원효로1동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.27,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "혼자",
+      "친구모임",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "감성적인",
+      "가성비"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.78,
+    "mention_count": 40,
+    "review_count": 2,
+    "attr_confidence": 0.64,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800290429",
+    "name": "원효문구매점",
+    "category_l1": "쇼핑",
+    "category_l2": "슈퍼마켓",
+    "lat": 37.5336628342562,
+    "lng": 126.960649758511,
+    "dong": "원효로2동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.27,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "데이트",
+      "혼자",
+      "친구모임"
+    ],
+    "atmosphere_tags": [
+      "가성비",
+      "넓은"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.94,
+    "mention_count": 173,
+    "review_count": 2,
+    "attr_confidence": 0.87,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800271056",
+    "name": "부산어묵",
+    "category_l1": "음식",
+    "category_l2": "그 외 기타 간이 음식점",
+    "lat": 37.5368610848637,
+    "lng": 126.959754230461,
+    "dong": "용문동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.77,
+    "group_capacity": 2,
+    "noise_level": 4,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "뷰가좋은",
+      "활기찬"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.78,
+    "mention_count": 30,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202308A0075889",
+    "name": "버거리숙대",
+    "category_l1": "음식",
+    "category_l2": "버거",
+    "lat": 37.5443334675971,
+    "lng": 126.970183247814,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.41,
+    "group_capacity": 4,
+    "noise_level": 1,
+    "purpose_tags": [
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "이국적인"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.65,
+    "mention_count": 120,
+    "review_count": 2,
+    "attr_confidence": 0.53,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220800278110",
+    "name": "마스터당구장",
+    "category_l1": "문화",
+    "category_l2": "당구장",
+    "lat": 37.5387715289807,
+    "lng": 126.960714962907,
+    "dong": "용문동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.48,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "작업",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "조용한",
+      "활기찬"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.82,
+    "mention_count": 72,
+    "review_count": 2,
+    "attr_confidence": 0.89,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202305A0028111",
+    "name": "기영이숯불두마리치킨용산원효점",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5330113940072,
+    "lng": 126.953194211702,
+    "dong": "원효로2동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.2,
+    "group_capacity": 10,
+    "noise_level": 2,
+    "purpose_tags": [
+      "데이트",
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "활기찬",
+      "뷰가좋은",
+      "트렌디한"
+    ],
+    "price_band": 4,
+    "sentiment_score": 0.93,
+    "mention_count": 158,
+    "review_count": 2,
+    "attr_confidence": 0.67,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202406A0385743",
+    "name": "명랑핫도그",
+    "category_l1": "음식",
+    "category_l2": "빵/도넛",
+    "lat": 37.5450622717488,
+    "lng": 126.966437439228,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.63,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "가족",
+      "혼자",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "아늑한",
+      "로컬한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.79,
+    "mention_count": 44,
+    "review_count": 2,
+    "attr_confidence": 0.59,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202308A0093001",
+    "name": "매머드익스프레스서울역",
+    "category_l1": "카페",
+    "category_l2": "카페",
+    "lat": 37.5548657673437,
+    "lng": 126.968741761583,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.53,
+    "group_capacity": 8,
+    "noise_level": 4,
+    "purpose_tags": [
+      "친구모임",
+      "가족",
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "감성적인",
+      "아늑한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.62,
+    "mention_count": 19,
+    "review_count": 2,
+    "attr_confidence": 0.75,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA0101202408A0000670",
+    "name": "튼튼글로벌에듀",
+    "category_l1": "쇼핑",
+    "category_l2": "서점",
+    "lat": 37.5403216671924,
+    "lng": 126.961992750115,
+    "dong": "효창동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.41,
+    "group_capacity": 4,
+    "noise_level": 2,
+    "purpose_tags": [
+      "가족"
+    ],
+    "atmosphere_tags": [
+      "넓은"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.88,
+    "mention_count": 136,
+    "review_count": 2,
+    "attr_confidence": 0.56,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220806980197",
+    "name": "라리에또",
+    "category_l1": "음식",
+    "category_l2": "경양식",
+    "lat": 37.545575946749,
+    "lng": 126.966810631752,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.45,
+    "group_capacity": 6,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업"
+    ],
+    "atmosphere_tags": [
+      "로컬한",
+      "트렌디한"
+    ],
+    "price_band": 2,
+    "sentiment_score": 0.61,
+    "mention_count": 118,
+    "review_count": 2,
+    "attr_confidence": 0.48,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220811716747",
+    "name": "포비컴퍼니",
+    "category_l1": "음식",
+    "category_l2": "빵/도넛",
+    "lat": 37.541529326586,
+    "lng": 126.962999192665,
+    "dong": "효창동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.62,
+    "group_capacity": 10,
+    "noise_level": 3,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "이국적인",
+      "조용한",
+      "넓은"
+    ],
+    "price_band": 3,
+    "sentiment_score": 0.69,
+    "mention_count": 197,
+    "review_count": 2,
+    "attr_confidence": 0.47,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220803480913",
+    "name": "다이소",
+    "category_l1": "쇼핑",
+    "category_l2": "그 외 기타 종합 소매업",
+    "lat": 37.5388436578206,
+    "lng": 126.960862017794,
+    "dong": "용문동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.27,
+    "group_capacity": 10,
+    "noise_level": 1,
+    "purpose_tags": [
+      "회식"
+    ],
+    "atmosphere_tags": [
+      "트렌디한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.76,
+    "mention_count": 185,
+    "review_count": 2,
+    "attr_confidence": 0.59,
+    "hotspot_code": null,
+    "tier": 1
+  },
+  {
+    "poi_id": "MA010120220812541018",
+    "name": "오소갈비",
+    "category_l1": "음식",
+    "category_l2": "돼지고기 구이/찜",
+    "lat": 37.554685306148,
+    "lng": 126.967768556021,
+    "dong": "청파동",
+    "zone": "cheongpa",
+    "commercial_area_id": null,
+    "business_hours": null,
+    "outdoor_exposure": 0.58,
+    "group_capacity": 8,
+    "noise_level": 2,
+    "purpose_tags": [
+      "작업",
+      "가족",
+      "데이트"
+    ],
+    "atmosphere_tags": [
+      "로컬한"
+    ],
+    "price_band": 1,
+    "sentiment_score": 0.82,
+    "mention_count": 92,
+    "review_count": 2,
+    "attr_confidence": 0.61,
+    "hotspot_code": null,
+    "tier": 1
+  }
+]
