@@ -160,3 +160,10 @@ Next.js  ─────▶  FastAPI  ─────▶  PostgreSQL
 ## 팀
 
 3인. 데이터 · 추천 엔진 · 프론트엔드와 배포로 나눠 진행한다.
+
+---
+
+# 📌 Dacos WhereToGo (웹 프론트엔드)
+- **배포 주소 (Prod URL):** https://dacos-wheretogo-web.vercel.app
+
+---
