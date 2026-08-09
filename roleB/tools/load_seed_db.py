@@ -13,13 +13,25 @@ DB 없이 검증할 수 없어서 두는 최소 도구다. 컬럼도 시드에 �
 
     python -m tools.load_seed_db                      # POI만
     python -m tools.load_seed_db --demo-hotspot       # + 가짜 실시간 지점/스냅샷
+    python -m tools.load_seed_db --demo-vectors       # + 가짜 태그 임베딩 (취향 축 켜기)
+    python -m tools.load_seed_db --scale 5000         # 성능 측정용 합성 POI
+
+`--demo-vectors`는 태그에서 결정적으로 만든 **가짜 벡터**다. bge-m3 임베딩이
+아니므로 의미는 없다. 다만 태그가 겹치는 POI끼리 코사인이 높게 나오도록 만들어서,
+`<=>` 연산·halfvec 캐스팅·평균 계산이 실제로 도는지 확인할 수 있다.
+
+`--scale`은 시드를 좌표만 흔들어 복제한다. **B4-1의 300ms 목표를 100건짜리
+시드로 확인하면 아무 의미가 없다.** 인덱스가 실제로 쓰이는지는 규모가 있어야 보인다.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
+import random
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -86,6 +98,39 @@ def _demo_fcst(now: datetime) -> list[dict[str, str]]:
     ]
 
 
+# ============================================================================
+# 가짜 벡터 — 의미는 없고 구조만 진짜다
+# ============================================================================
+
+VECTOR_DIM = 1024
+ATMOSPHERE_TAGS = ("조용한", "활기찬", "감성적인", "트렌디한", "로컬한",
+                   "넓은", "뷰가좋은", "아늑한", "이국적인", "가성비")
+PURPOSE_TAGS = ("데이트", "친구모임", "혼자", "가족", "작업", "회식")
+
+
+def _tag_vector(tag: str) -> list[float]:
+    """태그 하나의 기저 벡터. 같은 태그는 언제나 같은 벡터다."""
+    seed = int(hashlib.sha256(tag.encode()).hexdigest()[:16], 16)
+    rng = random.Random(seed)
+    v = [rng.gauss(0.0, 1.0) for _ in range(VECTOR_DIM)]
+    norm = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / norm for x in v]
+
+
+def _mean_vector(tags: list[str]) -> list[float] | None:
+    """태그들의 평균. 태그가 겹칠수록 코사인이 높아진다."""
+    vectors = [_tag_vector(t) for t in tags if t]
+    if not vectors:
+        return None
+    acc = [sum(col) for col in zip(*vectors)]
+    norm = math.sqrt(sum(x * x for x in acc)) or 1.0
+    return [x / norm for x in acc]
+
+
+def _to_literal(vector: list[float] | None) -> str | None:
+    return None if vector is None else "[" + ",".join(f"{x:.6f}" for x in vector) + "]"
+
+
 def _row(raw: dict[str, Any]) -> dict[str, Any]:
     bh = raw.get("business_hours")
     return {
@@ -114,12 +159,36 @@ def _row(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _scaled(rows: list[dict[str, Any]], target: int) -> list[dict[str, Any]]:
+    """시드를 좌표만 흔들어 target개까지 복제한다. **성능 측정 전용이다.**
+
+    용산구 대략 범위 안에서만 흔든다. 반경 필터가 의미를 잃으면 측정도 의미가 없다.
+    """
+    rng = random.Random(20260810)
+    out = list(rows)
+    i = 0
+    while len(out) < target:
+        src = rows[i % len(rows)]
+        clone = dict(src)
+        clone["poi_id"] = f"{src['poi_id']}_x{len(out)}"
+        clone["name"] = f"{src['name']} {len(out)}"
+        clone["lat"] = float(src["lat"]) + rng.uniform(-0.018, 0.018)
+        clone["lng"] = float(src["lng"]) + rng.uniform(-0.022, 0.022)
+        out.append(clone)
+        i += 1
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", default=DEFAULT_SEED)
     ap.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
     ap.add_argument("--demo-hotspot", action="store_true",
                     help="가짜 실시간 지점/스냅샷을 넣어 live_* 경로를 켠다")
+    ap.add_argument("--demo-vectors", action="store_true",
+                    help="가짜 태그 임베딩을 넣어 취향 축(<=>)을 켠다")
+    ap.add_argument("--scale", type=int, default=0,
+                    help="합성 POI를 복제해 이 개수까지 늘린다 (성능 측정용)")
     args = ap.parse_args()
 
     if not args.dsn:
@@ -149,8 +218,32 @@ def main() -> int:
                     (code, now, congest, json.dumps(ages), weather, fcst),
                 )
 
+        if args.scale and args.scale > len(rows):
+            rows = _scaled(rows, args.scale)
+
         for r in rows:
             cur.execute(UPSERT_POI, _row(r))
+
+        if args.demo_vectors:
+            for kind, tags in (("atmosphere", ATMOSPHERE_TAGS), ("purpose", PURPOSE_TAGS)):
+                for tag in tags:
+                    cur.execute(
+                        "INSERT INTO tag_embedding (tag, kind, embedding) "
+                        "VALUES (%s, %s, %s::halfvec(1024)) "
+                        "ON CONFLICT (tag) DO UPDATE SET embedding = EXCLUDED.embedding",
+                        (tag, kind, _to_literal(_tag_vector(tag))),
+                    )
+            # POI 벡터도 같은 기저로 만든다 — 태그가 겹치는 POI끼리 코사인이 높아진다
+            for r in rows:
+                vec = _mean_vector(
+                    list(r.get("atmosphere_tags") or []) + list(r.get("purpose_tags") or [])
+                )
+                if vec is None:
+                    continue
+                cur.execute(
+                    "UPDATE poi SET tag_vector = %s::halfvec(1024) WHERE poi_id = %s",
+                    (_to_literal(vec), r["poi_id"]),
+                )
 
         if args.demo_hotspot:
             # POI ↔ 최근접 지점 매핑 (반경 1km 이내만). 운영에서는 A의 map_poi_hotspot.

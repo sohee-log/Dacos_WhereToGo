@@ -166,13 +166,23 @@ def taste_similarity(
 ) -> float:
     """cosine(user.taste_vector, poi.tag_vector). 한쪽이라도 없으면 중립.
 
-    온보딩 임베딩은 W4(B4-5)에 붙는다. 그전까지는 대부분 중립으로 계산되며,
-    이는 "취향 축을 아직 안 쓴다"는 뜻이지 취향이 안 맞는다는 뜻이 아니다.
+    ⚠️ **실제 경로는 이 함수를 쓰지 않는다.** 1024차원 벡터를 후보 500건만큼
+    끌어오면 그 자체가 지연이라, W4부터는 DB에서 `<=>`로 계산해 숫자 하나만
+    받는다(retrieval.CANDIDATE_SQL). 이 함수는 그 값의 **정의**를 코드로 남겨
+    두는 자리이며, 벡터를 직접 다루는 테스트가 쓴다.
     """
-    c = cosine(user_vector, poi_vector)
-    if c is None:
+    return taste_from_similarity(cosine(user_vector, poi_vector))
+
+
+def taste_from_similarity(similarity: float | None) -> float:
+    """DB가 계산해 준 코사인 유사도 → 점수 항.
+
+    None은 "취향 축을 관측할 수 없다"는 뜻이다 — 프로필이 없거나 POI에
+    `tag_vector`가 없다. **0으로 바꾸지 않는다.** 0은 "취향이 정반대"다.
+    """
+    if similarity is None:
         return NEUTRAL_TERM
-    return _clip01(c)        # 음의 코사인은 0으로 본다
+    return _clip01(float(similarity))        # 음의 코사인은 0으로 본다
 
 
 def segment_affinity_term(affinity: float | None) -> float:
@@ -231,7 +241,7 @@ def build_terms(
     purpose: str,
     wx: Mapping[str, Any],
     affinity: float | None = None,
-    user_vector: Sequence[float] | None = None,
+    taste_sim: float | None = None,
     user_age_band: int | None = None,
     weather_sensitivity: int = DEFAULT_WEATHER_SENSITIVITY,
     congest_lvl: str | None = None,
@@ -248,7 +258,9 @@ def build_terms(
     return {
         "segment_affinity": segment_affinity_term(affinity),
         "purpose_match": purpose_match(poi.get("purpose_tags"), purpose),
-        "taste_similarity": taste_similarity(user_vector, poi.get("tag_vector")),
+        "taste_similarity": taste_from_similarity(
+            taste_sim if taste_sim is not None else poi.get("taste_sim")
+        ),
         "context_fit": context_fit(
             poi.get("outdoor_exposure", 0.0), wx, weather_sensitivity
         ),

@@ -275,6 +275,128 @@ def test_weather_sensitivity_changes_the_score(settings, db, executor, req):
         assert [r.poi_id for r in low.results] == [r.poi_id for r in high.results]
 
 
+# --- W4 로깅 · 온보딩 · 피드백 ---------------------------------------------------
+
+
+def test_recommendation_is_logged_with_unshown_candidates(settings, db, executor, req):
+    """🚩 B4-4 — 노출 안 된 후보까지 남아야 나중에 랭킹을 학습할 수 있다."""
+    from app.services.pipeline import build_live_recommendation
+
+    res = build_live_recommendation(req, settings, executor)
+    row = executor(
+        "SELECT log_id, candidates, context, explain_mode, latency_ms "
+        "FROM recommendation_log WHERE log_id = %(log_id)s",
+        {"log_id": res.log_id},
+    )
+    assert row, "log_id가 실제 행을 가리키지 않는다"
+    entry = row[0]
+    cands = entry["candidates"]
+
+    assert len(cands) > len(res.results), "상위 20건이 아니라 노출분만 남았다"
+    assert any(c["shown"] for c in cands)
+    assert any(not c["shown"] for c in cands)
+    assert all("terms" in c for c in cands)
+    assert entry["explain_mode"] == "template"
+    assert entry["latency_ms"] is not None
+
+
+def test_logged_context_coarsens_coordinates(settings, executor, req):
+    from app.services.pipeline import build_live_recommendation
+
+    res = build_live_recommendation(req, settings, executor)
+    ctx = executor(
+        "SELECT context FROM recommendation_log WHERE log_id = %(log_id)s",
+        {"log_id": res.log_id},
+    )[0]["context"]
+    assert ctx["lat"] == round(ITAEWON[0], 3)
+    assert "weather" in ctx and "weather_source" in ctx
+
+
+def test_feedback_updates_the_log(settings, db, executor, req):
+    from app.services.logging_svc import record_feedback
+    from app.services.pipeline import build_live_recommendation
+
+    res = build_live_recommendation(req, settings, executor)
+    picked = res.results[0].poi_id
+
+    assert record_feedback(
+        db.fetch_all, log_id=res.log_id, clicked=[picked], selected=None, feedback=None
+    )
+    # 두 번째 호출은 만족도만 보낸다 — 앞선 클릭이 지워지면 안 된다
+    assert record_feedback(
+        db.fetch_all, log_id=res.log_id, clicked=None, selected=picked, feedback=5
+    )
+
+    row = executor(
+        "SELECT clicked, selected, feedback FROM recommendation_log WHERE log_id=%(id)s",
+        {"id": res.log_id},
+    )[0]
+    assert row["clicked"] == [picked]
+    assert row["selected"] == picked
+    assert row["feedback"] == 5
+
+
+def test_feedback_on_unknown_log_is_false(db):
+    from app.services.logging_svc import record_feedback
+
+    assert not record_feedback(
+        db.fetch_all, log_id=999_999_999, clicked=["x"], selected=None, feedback=1
+    )
+
+
+def test_onboarding_creates_profile_and_taste_vector(settings, db, executor):
+    """B4-5 — tag_embedding이 있으면 taste_vector가 채워진다."""
+    from app.services.user_svc import make_user_id, upsert_profile
+
+    tags = ["조용한", "감성적인", "데이트"]
+    uid = make_user_id("F", 20, tags[:2], tags[2:], 3, 3)
+    upsert_profile(
+        db.fetch_all, user_id=uid, gender="F", age_band=20,
+        taste_tags=tags, weather_sensitivity=3,
+    )
+
+    row = executor(
+        "SELECT gender, age_band, taste_tags, weather_sensitivity, "
+        "       (taste_vector IS NOT NULL) AS has_vector "
+        "FROM user_profile WHERE user_id = %(uid)s",
+        {"uid": uid},
+    )
+    assert row, "프로필이 저장되지 않았다"
+    assert row[0]["taste_tags"] == tags
+    assert row[0]["weather_sensitivity"] == 3
+
+    embedded = executor("SELECT count(*) AS n FROM tag_embedding", {})[0]["n"]
+    if embedded:
+        assert row[0]["has_vector"], "tag_embedding이 있는데 taste_vector가 비었다"
+
+
+def test_taste_similarity_comes_from_the_database(settings, db, executor, req):
+    """1024차원 벡터를 파이썬으로 끌어오지 않는다. `<=>`가 실제로 도는지 본다."""
+    from app.services.user_svc import upsert_profile
+
+    if not executor("SELECT count(*) AS n FROM tag_embedding", {})[0]["n"]:
+        pytest.skip("tag_embedding이 비어 있다 (--demo-vectors 없이 적재됨)")
+
+    uid = "u_taste_test"
+    upsert_profile(
+        db.fetch_all, user_id=uid, gender="F", age_band=20,
+        taste_tags=["조용한", "감성적인"], weather_sensitivity=2,
+    )
+    rows = executor(
+        retrieval.CANDIDATE_SQL,
+        {
+            "lat": ITAEWON[0], "lng": ITAEWON[1], "radius_m": 3000,
+            "visit_at": datetime.now(KST), "party_size": 2, "budget_band": 4,
+            "rain_prob": 0.0, "pm25_grade": 1, "conf_min": 0.0,
+            "limit": 50, "user_id": uid,
+        },
+    )
+    sims = [r["taste_sim"] for r in rows if r["taste_sim"] is not None]
+    assert sims, "taste_sim이 전부 NULL이다 — tag_vector 또는 taste_vector가 비었다"
+    assert all(-1.01 <= s <= 1.01 for s in sims)
+    assert len(set(round(s, 4) for s in sims)) > 1, "모든 POI의 유사도가 같다"
+
+
 def test_hotspot_outside_pois_are_not_wiped_out(settings, executor, req):
     """재정규화가 빠지면 핫스팟 밖 POI가 상위에서 통째로 사라진다.
 

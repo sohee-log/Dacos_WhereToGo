@@ -6,7 +6,7 @@
 
 ---
 
-## 지금 상태 (W3 완료)
+## 지금 상태 (W4 완료 — 추천 v1)
 
 **`MOCK_MODE` 하나로 두 경로가 갈린다.**
 
@@ -55,12 +55,36 @@ DB가 없을 때 목으로 조용히 되돌아가지 않는다. 그러면 "실�
 > ⚠️ **citydata의 `rain_prob`은 0 또는 1이다.** 실황은 확률이 아니라 사실이다.
 > 확률이 필요한 건 3시간 뒤 방문이고 그건 기상청이 담당한다.
 
+| # | W4 작업 | 상태 | 산출물 |
+|---|---|---|---|
+| B4-1 | `/api/recommend` 실동작 · 300ms 이내 | ✅ | **POI 5,000건에서 p50 46ms / p95 53ms** |
+| B4-2 | 탐색 슬롯 | ✅ | 6~20위에서 1건, `is_exploration: true` |
+| B4-3 | `template_reason()` 폴백 | ✅ | [`app/services/explain.py`](app/services/explain.py) |
+| B4-4 | `recommendation_log` 기록 | ✅ | [`app/services/logging_svc.py`](app/services/logging_svc.py) — **노출 안 된 후보까지** |
+| B4-5 | `/api/onboarding` · `/api/feedback` | ✅ | [`app/services/user_svc.py`](app/services/user_svc.py) + 라우터 |
+
+🚩 **게이트: 실데이터로 추천이 나온다. LLM을 한 번도 부르지 않는다.** ✅
+`llm_api_key` 없이 전 경로가 돌고, 5개 엔드포인트가 모두 DB를 본다.
+
+**LLM 없이 완결된 것이 W4의 요점이다.** 그래야 ⓐ W5에서 RAG가 실제로 얼마나
+기여하는지 잴 수 있고 ⓑ 발표 당일 쿼터가 터져도 서비스가 죽지 않는다.
+
+### 성능 (B4-1)
+
+| 규모 | p50 | p95 | 비고 |
+|---|---|---|---|
+| 시드 100건 | 20ms | 24ms | — |
+| **합성 5,000건** | **46ms** | **53ms** | 목표 300ms |
+
+쿼리 플랜도 확인했다 — `idx_poi_geom`(GIST) Bitmap Index Scan, 실행 12.9ms.
+전체 스캔으로 떨어지지 않는다. 규모를 늘리는 방법은
+`python -m tools.load_seed_db --scale 5000` (합성 데이터, 개발 전용).
+
 **아직 임시인 것 (숨기지 않는다)**
 
 | | 지금 | 언제 바뀌나 |
 |---|---|---|
-| 취향 유사도 | 항상 중립 0.5 (온보딩 임베딩이 없다) | W4 B4-5 |
-| `log_id` | 결정적 해시. **로그 행이 아직 없다** | W4 B4-4 |
+| 취향 유사도 | `tag_embedding`이 비면 중립 0.5 | A가 16행을 채우면 즉시 동작 |
 | `explain_mode` | 항상 `template` | W5 |
 | `evidence` | 빈 배열 | W5 B5-1 (RAG 인용) |
 
@@ -103,10 +127,12 @@ docker run -d --name wheretogo-db -p 5432:5432 `
 docker exec wheretogo-db bash -c "apt-get update -qq && apt-get install -y -qq postgresql-16-pgvector"
 
 $env:DATABASE_URL = "postgresql://postgres:devpass@localhost:5432/wheretogo"
-docker cp ..\db\migrations\001_init.sql wheretogo-db:/tmp/
-docker exec wheretogo-db psql -U postgres -d wheretogo -v ON_ERROR_STOP=1 -f /tmp/001_init.sql
+docker cp ..\db\migrations\ wheretogo-db:/tmp/
+docker exec wheretogo-db psql -U postgres -d wheretogo -v ON_ERROR_STOP=1 -f /tmp/migrations/001_init.sql
+docker exec wheretogo-db psql -U postgres -d wheretogo -v ON_ERROR_STOP=1 -f /tmp/migrations/002_tag_embedding.sql
 
-python -m tools.load_seed_db --demo-hotspot   # 개발용 적재 (운영 적재는 A)
+# 개발용 적재 (운영 적재는 A). --demo-* 는 전부 가짜 데이터다
+python -m tools.load_seed_db --demo-hotspot --demo-vectors
 $env:MOCK_MODE = "false"
 uvicorn app.main:app --reload --port 8000
 
@@ -141,8 +167,10 @@ roleB/
 │       ├── context_fit.py   # 비선형 날씨 + 체감온도 근사 (W3)
 │       ├── live_signals.py  # hotspot_snapshot 해석 · 방문시각 혼잡 예측 (W3)
 │       ├── kma.py           # 기상청 단기예보 클라이언트 (W3)
+│       ├── logging_svc.py   # ④ recommendation_log — 노출 안 된 후보까지 (W4)
+│       ├── user_svc.py      # 온보딩 프로필 + taste_vector (W4)
 │       └── explain.py       # 템플릿 설명 (W5에 LLM·캐시가 붙는다)
-├── tests/                   # 170개. test_live_db.py는 실 DB가 있을 때만 돈다
+├── tests/                   # 199개. test_live_db.py는 실 DB가 있을 때만 돈다
 ├── tools/
 │   ├── load_seed_db.py      # 개발용 시드 적재 (운영 적재는 A)
 │   └── llm_quota_probe.py   # B1-5 측정 스크립트
@@ -151,7 +179,7 @@ roleB/
 └── requirements.txt         # 임베딩 모델은 여기 들어가지 않는다
 ```
 
-**아직 없는 것 (주차별로 채운다):** `logging_svc.py`(W4) · `rag.py`(W5)
+**아직 없는 것:** `rag.py`(W5 — pgvector 사전필터 + LLM 설명 생성)
 
 ---
 
@@ -220,11 +248,30 @@ C의 **콜드스타트 안내(C4-5)와 같은 자리**에서 "잠시 후 다시 
 갈리는 것이 정상이고, 갈릴 때가 이 서비스의 차별점이 보이는 순간이다.
 둘 다 `null`이면 그 좌표가 실시간 지점 반경 밖이라는 뜻이다 — 문구를 지어내지 않는다.
 
+### 6. W4에 생긴 것 — `log_id`가 진짜다
+
+`POST /api/recommend`의 `log_id`가 이제 **실제 `recommendation_log` 행**을 가리킨다.
+`POST /api/feedback`에 그대로 실어 보내면 된다.
+
+- 클릭 → 선택 → 만족도를 **여러 번에 나눠 보내도 된다.** 빈 값은 덮어쓰지 않는다.
+  매번 전체를 다시 보낼 필요가 없다
+- `404`가 오면 그 추천이 기록되지 않았다는 뜻이다. **무시하고 넘어가면 된다** —
+  피드백 한 건이 빠질 뿐 사용자 흐름은 막히지 않는다
+- `POST /api/onboarding`도 이제 저장한다. 같은 답을 다시 내면 같은 `user_id`가 나오고
+  프로필이 갱신된다 (재제출이 안전하다)
+- `GET /api/poi/{id}`가 실데이터를 준다. `reviews`에 후기 최대 5건이 실리고
+  **협찬 글은 뒤로 밀린다**
+
 ---
 
 ## A가 알아야 할 것
 
-- 내가 읽는 테이블: `poi` · `segment_affinity` · `review_chunk` · `hotspot_snapshot` · `query_vector_cache`
+- 내가 읽는 테이블: `poi` · `segment_affinity` · `review_chunk` · `hotspot_snapshot` ·
+  `query_vector_cache` · **`tag_embedding`(신규, `db/migrations/002_tag_embedding.sql`)**
+- 🔴 **`tag_embedding` 16행을 채워달라.** 분위기 10 + 목적 6이고 어휘는
+  `app/constants.py`와 정확히 같아야 한다. 이게 없으면 온보딩의 `taste_vector`가
+  NULL이 되고 **취향 항(가중치 0.16)이 통째로 중립으로 쉰다.** 16번만 임베딩하면 된다
+- `poi.tag_vector`도 같은 임베딩 공간이어야 한다. 다른 모델로 만들면 코사인이 무의미해진다
 - **`hotspot_snapshot.fcst`를 반드시 채워달라.** W3부터 혼잡도는 실황이 아니라
   `FCST_PPLTN`의 **방문 예정 시각 슬롯**을 쓴다. `fcst`가 비면 실황으로 물러서는데,
   그러면 "19시에 붐빌 예정"이라는 배너 문구가 사라진다. 형태는 그대로 넣으면 된다 —

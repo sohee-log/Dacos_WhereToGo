@@ -38,8 +38,8 @@ from app.constants import (
 Executor = Callable[[str, Mapping[str, Any]], list[dict[str, Any]]]
 
 # 후보 한 건당 가져오는 컬럼. 스코어링에 필요한 것만 가져온다.
-# tag_vector는 1024차원이라 500개를 끌어오면 그 자체가 지연이 된다.
-# 취향 유사도는 W4에 SQL 쪽 `<=>` 연산으로 옮긴다 (ROLE_B §6.8과 같은 방식).
+# **tag_vector 자체는 가져오지 않는다.** 1024차원 × 500건이면 그 자체가 지연이다.
+# 취향 유사도는 DB에서 `<=>`(코사인 거리)로 계산해 숫자 하나만 받는다 (W4).
 _COLUMNS = """
     p.poi_id, p.name, p.category_l1, p.category_l2,
     ST_Y(p.geom::geometry) AS lat,
@@ -48,15 +48,29 @@ _COLUMNS = """
     p.outdoor_exposure, p.group_capacity, p.price_band, p.noise_level,
     p.purpose_tags, p.atmosphere_tags,
     p.quality_score, p.mention_count, p.review_count, p.attr_confidence,
-    ST_Distance(p.geom, {pt}) AS dist_m
+    ST_Distance(p.geom, {pt}) AS dist_m,
+    CASE
+        WHEN p.tag_vector IS NOT NULL AND u.taste_vector IS NOT NULL
+        THEN 1 - (p.tag_vector <=> u.taste_vector)
+    END AS taste_sim
 """
 
 # 사용자 좌표. geography로 캐스팅해야 ST_DWithin/ST_Distance가 미터 단위로 돈다.
 _POINT = "ST_SetSRID(ST_MakePoint(%(lng)s, %(lat)s), 4326)::geography"
 
+# 취향 벡터 한 행. LATERAL로 붙여서 후보마다 서브쿼리가 돌지 않게 한다.
+# 프로필이 없거나 tag_embedding이 비어 있으면 NULL이고, 그러면 taste_sim도 NULL이다
+# (0이 아니다 — 0은 "취향이 정반대"라는 뜻이 된다).
+_TASTE_JOIN = """
+LEFT JOIN LATERAL (
+    SELECT taste_vector FROM user_profile WHERE user_id = %(user_id)s
+) u ON TRUE
+"""
+
 CANDIDATE_SQL = f"""
 SELECT {_COLUMNS.format(pt=_POINT)}
 FROM poi p
+{_TASTE_JOIN}
 WHERE ST_DWithin(p.geom, {_POINT}, %(radius_m)s)
   AND is_open_at(p.business_hours, %(visit_at)s)
   AND p.group_capacity >= %(party_size)s
@@ -73,6 +87,7 @@ LIMIT %(limit)s
 NEAREST_SQL = f"""
 SELECT {_COLUMNS.format(pt=_POINT)}
 FROM poi p
+{_TASTE_JOIN}
 ORDER BY p.geom <-> {_POINT}
 LIMIT %(limit)s
 """
@@ -100,6 +115,31 @@ USER_PROFILE_SQL = """
 SELECT user_id, gender, age_band, taste_tags, weather_sensitivity
 FROM user_profile
 WHERE user_id = %(user_id)s
+"""
+
+# 상세 화면. 후보 생성과 달리 한 건이므로 리뷰 인용까지 함께 가져온다.
+# 협찬 글은 뒤로 민다 — 상세에서도 광고 문장이 대표로 보이면 신뢰를 잃는다.
+POI_DETAIL_SQL = """
+SELECT p.poi_id, p.name, p.category_l1, p.category_l2,
+       ST_Y(p.geom::geometry) AS lat,
+       ST_X(p.geom::geometry) AS lng,
+       p.dong, p.zone, p.business_hours,
+       p.outdoor_exposure, p.group_capacity, p.noise_level, p.price_band,
+       p.purpose_tags, p.atmosphere_tags,
+       p.quality_score, p.mention_count, p.attr_confidence,
+       COALESCE(r.reviews, '[]'::json) AS reviews
+FROM poi p
+LEFT JOIN LATERAL (
+    SELECT json_agg(json_build_object('text', c.text, 'source', c.source)) AS reviews
+    FROM (
+        SELECT text, source
+        FROM review_chunk
+        WHERE poi_id = p.poi_id
+        ORDER BY is_sponsored, written_at DESC NULLS LAST
+        LIMIT 5
+    ) c
+) r ON TRUE
+WHERE p.poi_id = %(poi_id)s
 """
 
 # 사용자가 서 있는 생활권. 거리 배율의 기준점이다 (ROLE_B §6.6).
@@ -139,6 +179,8 @@ class RetrievalQuery:
     rain_prob: float = 0.0
     pm25_grade: int = 1
     limit: int = 500
+    # 취향 유사도를 DB에서 계산하기 위한 키. 프로필이 없으면 taste_sim이 NULL이 된다.
+    user_id: str = ""
 
 
 @dataclass
@@ -163,6 +205,7 @@ def _params(q: RetrievalQuery, radius_m: float, conf_min: float) -> dict[str, An
         "pm25_grade": q.pm25_grade,
         "conf_min": conf_min,
         "limit": q.limit,
+        "user_id": q.user_id,
     }
 
 
@@ -198,7 +241,10 @@ def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
 
     # ③ 최후 — 하드필터를 풀고 최근접. 빈 화면만은 만들지 않는다
     if len(result.candidates) < RESULT_MIN:
-        nearest = executor(NEAREST_SQL, {"lat": q.lat, "lng": q.lng, "limit": RESULT_MIN})
+        nearest = executor(
+            NEAREST_SQL,
+            {"lat": q.lat, "lng": q.lng, "limit": RESULT_MIN, "user_id": q.user_id},
+        )
         if len(nearest) > len(result.candidates):
             result.candidates = nearest
             result.low_confidence = True
@@ -227,6 +273,11 @@ def fetch_nearest_hotspot(
 
 def fetch_user_profile(executor: Executor, user_id: str) -> dict[str, Any] | None:
     rows = executor(USER_PROFILE_SQL, {"user_id": user_id})
+    return rows[0] if rows else None
+
+
+def fetch_poi_detail(executor: Executor, poi_id: str) -> dict[str, Any] | None:
+    rows = executor(POI_DETAIL_SQL, {"poi_id": poi_id})
     return rows[0] if rows else None
 
 
