@@ -1,0 +1,69 @@
+# gitleaks 설정 — public 레포 시크릿 유출 방지 (ROLE_C §1.2 / PLAN.md §11.4)
+#
+# 이 레포는 public이다. 한 번 푸시된 키는 히스토리에서 지워도 이미 노출된 것으로 간주하고
+# 발급처에서 폐기·재발급해야 한다. 그래서 "커밋 전에 막는 것"이 유일한 방어선이다.
+#
+# 두 곳에서 돈다.
+#   1) 로컬 프리커밋 훅  — .githooks/pre-commit (git config core.hooksPath .githooks)
+#   2) CI                — .github/workflows/ci.yml 의 secrets 잡 (이쪽이 실제 게이트다)
+#
+# 훅은 각자 설치해야 동작하므로 강제력이 없다. CI를 신뢰한다.
+
+title = "Dacos WhereToGo — secret scan"
+
+[extend]
+# gitleaks 기본 룰셋(AWS/GCP/Slack/GitHub 토큰 등)을 그대로 상속받고 아래를 더한다.
+useDefault = true
+
+# --- 이 프로젝트가 실제로 다루는 키들 (PLAN.md §3.0) ------------------------
+
+[[rules]]
+id = "kakao-key"
+description = "카카오 REST/Admin/JS 키 (32자 hex)"
+regex = '''(?i)kakao[_\-]?(rest|admin|native|js|javascript)?[_\-]?(api)?[_\-]?key["'\s]*[:=]["'\s]*([0-9a-f]{32})'''
+secretGroup = 3
+tags = ["kakao"]
+
+[[rules]]
+id = "naver-client-secret"
+description = "네이버 개발자센터 client secret"
+regex = '''(?i)naver[_\-]?(client[_\-]?)?secret["'\s]*[:=]["'\s]*([A-Za-z0-9_\-]{8,})'''
+secretGroup = 2
+tags = ["naver"]
+
+[[rules]]
+id = "public-data-service-key"
+description = "공공데이터포털/서울 열린데이터광장 인증키 (기상청·citydata 포함)"
+regex = '''(?i)(seoul[_\-]?citydata|kma[_\-]?service|opendata|service)[_\-]?key["'\s]*[:=]["'\s]*([A-Za-z0-9%+/=]{20,})'''
+secretGroup = 2
+tags = ["public-data"]
+
+[[rules]]
+id = "postgres-url-with-password"
+description = "비밀번호가 박힌 Postgres 접속 문자열 (Supabase DATABASE_URL)"
+regex = '''postgres(?:ql)?://[^\s:@/]+:[^\s:@/]{3,}@[^\s/]+'''
+tags = ["supabase", "database"]
+
+[[rules]]
+id = "llm-api-key"
+description = "LLM 게이트웨이 API 키"
+regex = '''(?i)llm[_\-]?api[_\-]?key["'\s]*[:=]["'\s]*([A-Za-z0-9_\-]{16,})'''
+secretGroup = 1
+tags = ["llm"]
+
+# --- 오탐 제외 --------------------------------------------------------------
+
+[allowlist]
+description = "값이 비어 있는 예시 파일과 기계 생성 파일"
+paths = [
+  # .env.example 은 키 이름만 있고 값은 비어 있다. 커밋되는 게 정상이다.
+  '''\.env\.example$''',
+  # 이 파일 자체. 위 정규식이 스스로에게 걸린다.
+  '''\.gitleaks\.toml$''',
+  # npm이 생성하는 무결성 해시 덩어리 (base64가 시크릿으로 오인된다)
+  '''package-lock\.json$''',
+]
+regexes = [
+  # 문서·설정의 자리표시자
+  '''(?i)(your|dummy|sample|example|changeme|placeholder|xxx+|<[^>]+>)''',
+]

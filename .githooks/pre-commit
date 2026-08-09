@@ -1,0 +1,39 @@
+#!/bin/sh
+# 커밋 전 시크릿 스캔 (ROLE_C C1-2)
+#
+# 설치:  git config core.hooksPath .githooks     ← 클론한 사람이 각자 1회 실행
+# 도구:  https://github.com/gitleaks/gitleaks/releases  (v8.19 이상)
+#        Windows(scoop) scoop install gitleaks / macOS brew install gitleaks
+#
+# gitleaks가 없으면 커밋을 막지 않고 경고만 한다. 팀원 전원에게 설치를 강제하면
+# 훅이 통째로 우회되기 때문이다. 실제 차단은 CI(secrets 잡)가 한다.
+
+set -e
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks가 없어 시크릿 스캔을 건너뜁니다."
+  echo "[pre-commit] 설치: https://github.com/gitleaks/gitleaks/releases  (레포는 public입니다)"
+  exit 0
+fi
+
+ROOT=$(git rev-parse --show-toplevel)
+TMP=$(mktemp -d)
+# 워킹트리가 아니라 '스테이징된 내용'만 스캔한다.
+git checkout-index --prefix="$TMP/" -a -f
+
+set +e
+gitleaks dir "$TMP" --config "$ROOT/.gitleaks.toml" --redact --no-banner
+RC=$?
+set -e
+
+rm -rf "$TMP"
+
+if [ $RC -ne 0 ]; then
+  echo ""
+  echo "[pre-commit] 시크릿으로 보이는 값이 스테이징에 있습니다. 커밋을 중단합니다."
+  echo "[pre-commit] 값은 .env(커밋 금지) 또는 Render/Vercel 대시보드 환경변수로 옮기세요."
+  echo "[pre-commit] 오탐이면 .gitleaks.toml 의 [allowlist] 에 근거를 적고 추가하세요."
+  exit 1
+fi
+
+exit 0

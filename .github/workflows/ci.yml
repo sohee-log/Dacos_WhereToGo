@@ -1,33 +1,68 @@
-# .github/workflows/ci.yml
-name: C1-6 CI Workflow (Lint + Build)
+# CI — 시크릿 스캔 + 프론트 lint/build (ROLE_C C1-2 / C1-6)
+name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
 
 jobs:
-  build:
+  # 레포가 public이므로 이 잡이 먼저다. 프리커밋 훅은 각자 설치해야 돌지만
+  # 이 잡은 우회할 수 없다. 실질적인 시크릿 게이트다.
+  secrets:
+    name: secret scan
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 히스토리 스캔에 필요
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: roleC/package.json
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
 
-    - name: Install dependencies
-      run: |
-        cd roleC
-        npm list || npm install
+      # 현재 트리 — 여기서 걸리면 머지를 막는다.
+      - name: Scan working tree
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
 
-    - name: Next.js Lint and Build Test
-      run: |
-        cd roleC
-        npm run build
+      # 과거 커밋 — 이미 푸시된 것은 막아봐야 소용이 없으므로 CI를 세우지 않고
+      # 로그로만 알린다. 여기서 무언가 나오면 해당 키를 '즉시 폐기·재발급'한다.
+      - name: Scan git history (report only)
+        continue-on-error: true
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner
+
+  web:
+    name: roleC lint + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: roleC
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: roleC/package-lock.json
+
+      # npm install이 아니라 npm ci — 락파일 그대로 재현해야 CI가 의미를 갖는다.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
