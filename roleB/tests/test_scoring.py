@@ -175,42 +175,7 @@ def test_taste_similarity_is_cosine():
     assert taste_similarity([1.0, 0.0], [-1.0, 0.0]) == 0.0           # 음수는 0으로
 
 
-# --- context_fit — 비선형 유지 확인 -------------------------------------------
-
-
-def test_rain_only_penalizes_outdoor():
-    """실내(노출 0)는 비가 와도 그대로여야 한다. 선형 감점이면 여기서 깨진다."""
-    assert context_fit(0.0, RAINY) == pytest.approx(context_fit(0.0, CLEAR))
-    assert context_fit(1.0, RAINY) < context_fit(1.0, CLEAR)
-
-
-def test_pleasant_weather_gives_outdoor_a_bonus():
-    """맑고 15~25도면 야외가 오히려 유리하다. 감점만 있으면 U자형이 아니다."""
-    assert context_fit(1.0, CLEAR) > 1.0
-    assert context_fit(0.0, CLEAR) == pytest.approx(1.0)
-
-
-def test_heat_and_pm_are_threshold_effects():
-    hot = {**CLEAR, "feels_like": 33.0}
-    warm = {**CLEAR, "feels_like": 30.0}
-    assert context_fit(1.0, hot) < context_fit(1.0, warm)
-
-    bad = {**CLEAR, "pm25_grade": 3}
-    ok = {**CLEAR, "pm25_grade": 2}
-    assert context_fit(1.0, bad) < context_fit(1.0, ok)
-
-
-def test_weather_sensitivity_scales_rain_penalty():
-    """온보딩 5번 문항이 실제로 점수를 바꿔야 한다 (ROLE_B §6.3 개인화 훅)."""
-    insensitive = context_fit(1.0, RAINY, weather_sensitivity=1)
-    sensitive = context_fit(1.0, RAINY, weather_sensitivity=3)
-    assert sensitive < insensitive
-
-
-def test_context_fit_is_bounded():
-    extreme = {"rain_prob": 1.0, "pm25_grade": 4, "feels_like": 40.0,
-               "visit_hour": 23, "sunset_hour": 19}
-    assert 0.0 <= context_fit(1.0, extreme) <= 1.5
+# context_fit 자체의 비선형 테스트는 W3에 분리됐다 → tests/test_context_fit.py
 
 
 # --- 실시간 항 — None 경로가 핵심 ---------------------------------------------
@@ -254,11 +219,11 @@ POI_OUTSIDE = {
     "outdoor_exposure": 0.1,
     "quality_score": 0.8,
 }
-HOTSPOT = {"congest_lvl": "여유", "age_rates": {"20": 34.0}}
+INSIDE = {"congest_lvl": "여유", "age_rates": {"20": 34.0}, "user_age_band": 20}
 
 
 def test_build_terms_drops_live_terms_outside_hotspot():
-    terms = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=None)
+    terms = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR)
     assert terms["live_segment_match"] is None
     assert terms["crowd_fit"] is None
     assert all(terms[k] is not None for k in
@@ -267,18 +232,15 @@ def test_build_terms_drops_live_terms_outside_hotspot():
 
 
 def test_build_terms_fills_live_terms_inside_hotspot():
-    terms = build_terms(
-        POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=HOTSPOT, user_age_band=20
-    )
+    terms = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, **INSIDE)
     assert terms["live_segment_match"] is not None
     assert terms["crowd_fit"] == pytest.approx(1.0)      # 데이트 × 여유
 
 
 def test_hotspot_inside_and_outside_score_in_same_range():
     """ROLE_B W2 B2-3이 명시한 테스트를 실제 조립 경로로도 확인한다."""
-    inside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR,
-                         hotspot=HOTSPOT, user_age_band=20)
-    outside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=None)
+    inside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, **INSIDE)
+    outside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR)
 
     s_in, _ = renormalized_score(inside)
     s_out, avail_out = renormalized_score(outside)

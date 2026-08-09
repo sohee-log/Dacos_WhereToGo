@@ -25,33 +25,27 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.constants import (
-    AFTER_SUNSET_COEF,
     BASELINE_AGE_RATE,
-    COLD_FEELS_LIKE,
-    CONTEXT_FIT_MAX,
     CROWD_FIT_LIVELY,
     CROWD_FIT_NEUTRAL,
     CROWD_FIT_QUIET,
     DISTANCE_NORM_M,
-    EXTREME_TEMP_COEF,
-    HEAT_FEELS_LIKE,
-    IS_CLEAR_RAIN_PROB,
     NEUTRAL_TERM,
     OPTIONAL_TERMS,
     PENALTY,
-    PLEASANT_BONUS,
-    PLEASANT_RANGE,
-    PM_BAD_GRADE,
-    PM_COEF,
     PURPOSE_LIVELY,
     PURPOSE_QUIET,
-    RAIN_COEF,
     RAIN_DISTANCE_MULTIPLIER,
     RAIN_PROB_HEAVY,
-    RAIN_TRIGGER,
     W,
-    WEATHER_SENSITIVITY_RAIN_COEF,
     zone_multiplier,
+)
+
+# 날씨 비선형 로직은 W3(B3-1)에 context_fit.py로 분리됐다.
+# 여기서 다시 내보내는 것은 기존 임포트 경로를 깨지 않기 위해서다.
+from app.services.context_fit import (  # noqa: F401
+    DEFAULT_WEATHER_SENSITIVITY,
+    context_fit,
 )
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -191,43 +185,6 @@ def quality_term(quality_score: float | None) -> float:
     return NEUTRAL_TERM if quality_score is None else _clip01(float(quality_score))
 
 
-def context_fit(
-    outdoor_exposure: float,
-    wx: Mapping[str, Any],
-    weather_sensitivity: int = 2,
-) -> float:
-    """날씨 적합도. **비선형이다** — 선형 가중합으로 바꾸면 로직의 핵심이 사라진다.
-
-    기온은 U자형(쾌적 구간에서만 야외 가산), 미세먼지는 등급 임계값에서 꺾인다.
-    `weather_sensitivity`(온보딩 5번 문항, 1~3)가 비 계수를 스케일한다 — 민감한
-    사용자일수록 같은 강수확률에서 야외를 더 크게 깎는다 (ROLE_B §6.3 개인화 훅).
-
-    wx 키: rain_prob / pm25_grade / feels_like / visit_hour / sunset_hour
-    """
-    s = 1.0
-    e = float(outdoor_exposure or 0.0)
-    rain_prob = float(wx.get("rain_prob", 0.0) or 0.0)
-    pm25_grade = int(wx.get("pm25_grade", 1) or 1)
-    feels_like = float(wx.get("feels_like", 20.0))
-    visit_hour = int(wx.get("visit_hour", 12))
-    sunset_hour = int(wx.get("sunset_hour", 19))
-
-    rain_coef = WEATHER_SENSITIVITY_RAIN_COEF.get(weather_sensitivity, RAIN_COEF)
-
-    if rain_prob > RAIN_TRIGGER:
-        s *= 1 - rain_coef * e * min(rain_prob, 1.0)
-    if pm25_grade >= PM_BAD_GRADE:
-        s *= 1 - PM_COEF * e
-    if feels_like > HEAT_FEELS_LIKE or feels_like < COLD_FEELS_LIKE:
-        s *= 1 - EXTREME_TEMP_COEF * e
-    if rain_prob < IS_CLEAR_RAIN_PROB and PLEASANT_RANGE[0] <= feels_like <= PLEASANT_RANGE[1]:
-        s *= 1 + PLEASANT_BONUS * e          # 맑고 선선하면 야외가 오히려 유리하다
-    if visit_hour >= sunset_hour:
-        s *= 1 - AFTER_SUNSET_COEF * e
-
-    return max(0.0, min(s, CONTEXT_FIT_MAX))
-
-
 def _rate_as_fraction(rate: float) -> float:
     """citydata의 PPLTN_RATE_* 는 퍼센트(31.2)로 온다. 픽스처는 비율(0.312)로 오기도 한다."""
     return rate / 100.0 if rate > 1.0 else rate
@@ -276,20 +233,17 @@ def build_terms(
     affinity: float | None = None,
     user_vector: Sequence[float] | None = None,
     user_age_band: int | None = None,
-    weather_sensitivity: int = 2,
-    hotspot: Mapping[str, Any] | None = None,
+    weather_sensitivity: int = DEFAULT_WEATHER_SENSITIVITY,
+    congest_lvl: str | None = None,
+    age_rates: Mapping[str, Any] | None = None,
 ) -> dict[str, float | None]:
     """7개 항을 한 번에 만든다. 호출부(pipeline)는 이 dict를 total_score에 넘긴다.
 
-    `hotspot`이 None이면 live 두 항이 None이 되고 ②에서 재정규화된다.
+    `congest_lvl`·`age_rates`는 지점 반경 밖 POI면 None으로 들어온다. 그러면
+    live 두 항이 None이 되고 ②에서 재정규화된다 (§6.4).
+    스냅샷 해석은 live_signals.py가 한다 — 여기는 순수 수식만 남긴다.
     """
-    congest = None
-    age_rates = None
-    if hotspot:
-        # 방문 시각 예측 혼잡도는 W3(B3-2)에서 fcst 배열로 바뀐다.
-        # W2는 최신 실황(congest_lvl)을 그대로 쓴다.
-        congest = hotspot.get("congest_lvl")
-        age_rates = hotspot.get("age_rates")
+    congest = congest_lvl
 
     return {
         "segment_affinity": segment_affinity_term(affinity),

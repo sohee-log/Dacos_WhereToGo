@@ -123,6 +123,14 @@ class Context(BaseModel):
     congest_now: CongestLevel | None = None
     congest_forecast_at_visit: CongestLevel | None = None
     age_mix_top: str | None = Field(default=None, examples=["20대 31%"])
+    weather_source: Literal["citydata", "kma", "kma+citydata", "mock"] | None = Field(
+        default=None,
+        description=(
+            "날씨를 어디서 가져왔는가. citydata=실황 · kma=기상청 단기예보 · "
+            "mock=소스 없음(결정적 가짜). 화면에 꼭 그릴 필요는 없지만, "
+            "**mock이 뜨는데 실서버라면 키·적재가 빠진 것**이다"
+        ),
+    )
 
 
 # ============================================================================

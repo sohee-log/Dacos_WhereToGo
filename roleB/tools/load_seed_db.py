@@ -21,7 +21,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psycopg
@@ -58,6 +58,32 @@ DEMO_HOTSPOTS = [
     ("POI_YSS", "용산역", 37.5299, 126.9648, "붐빔",
      {"10": 8.0, "20": 22.0, "30": 26.0, "40": 20.0, "50": 14.0, "60": 10.0}),
 ]
+
+# WEATHER_STTS 형태 그대로. 값이 전부 문자열인 것이 핵심이다 —
+# 파서가 실제 응답과 같은 모양을 상대하게 해야 한다.
+DEMO_WEATHER = {
+    "TEMP": "28.4",
+    "SENSIBLE_TEMP": "31.7",
+    "PRECPT_TYPE": "없음",
+    "PRECIPITATION": "-",
+    "PM10": "42",
+    "PM25": "23",
+    "SUNSET": "19:42",
+    "SKY_STTS": "구름많음",
+}
+
+# FCST_PPLTN 형태. 2시간 간격 12시간. 실행 시각 기준으로 만든다.
+DEMO_FCST_LEVELS = ["보통", "약간 붐빔", "붐빔", "약간 붐빔", "보통", "여유"]
+
+
+def _demo_fcst(now: datetime) -> list[dict[str, str]]:
+    return [
+        {
+            "FCST_TIME": (now + timedelta(hours=2 * i)).strftime("%Y-%m-%d %H:00"),
+            "FCST_CONGEST_LVL": level,
+        }
+        for i, level in enumerate(DEMO_FCST_LEVELS)
+    ]
 
 
 def _row(raw: dict[str, Any]) -> dict[str, Any]:
@@ -106,6 +132,9 @@ def main() -> int:
 
     with psycopg.connect(args.dsn) as conn, conn.cursor() as cur:
         if args.demo_hotspot:
+            now = datetime.now(timezone.utc).astimezone()
+            fcst = json.dumps(_demo_fcst(now), ensure_ascii=False)
+            weather = json.dumps(DEMO_WEATHER, ensure_ascii=False)
             for code, name, lat, lng, congest, ages in DEMO_HOTSPOTS:
                 cur.execute(
                     "INSERT INTO hotspot (code, name, category, geom) VALUES "
@@ -115,9 +144,9 @@ def main() -> int:
                 )
                 cur.execute(
                     "INSERT INTO hotspot_snapshot "
-                    "(hotspot_code, observed_at, congest_lvl, age_rates) "
-                    "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                    (code, datetime.now(timezone.utc), congest, json.dumps(ages)),
+                    "(hotspot_code, observed_at, congest_lvl, age_rates, weather, fcst) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (code, now, congest, json.dumps(ages), weather, fcst),
                 )
 
         for r in rows:

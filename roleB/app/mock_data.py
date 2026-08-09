@@ -408,6 +408,8 @@ def build_context(
         congest_now=congest_now if nearest else None,
         congest_forecast_at_visit=congest_visit if nearest else None,
         age_mix_top="20대 31%" if nearest else None,
+        # 목은 언제나 가짜 소스다. 실서버에서 이 값이 보이면 키·적재가 빠진 것이다.
+        weather_source="mock",
     )
     wx = {
         "state": state,
