@@ -250,6 +250,10 @@ LLM-as-judge(B6-3, LLM 키 대기)
 
 ## C가 알아야 할 것
 
+> 📄 **인수 메모: [docs/HANDOFF_TO_C.md](docs/HANDOFF_TO_C.md)** — W1~W6에서 늘어난
+> 계약, C가 해야 할 인프라 작업, 화면별 변경점, 발표 전날 절차가 한 곳에 있다.
+> 아래는 그중 자주 틀리는 것만 남긴 요약이다.
+
 목 응답에는 **`X-Mock-Response: true`** 헤더가 붙는다. 실서버로 바뀌면 사라진다.
 
 ### 1. `score_breakdown`의 `live_segment` / `crowd`는 **없을 수 있다**
