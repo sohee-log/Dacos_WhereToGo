@@ -344,6 +344,11 @@ C의 **콜드스타트 안내(C4-5)와 같은 자리**에서 "잠시 후 다시 
 
 ## A가 알아야 할 것
 
+> 📄 **인수 메모: [docs/HANDOFF_TO_A.md](docs/HANDOFF_TO_A.md)** — 무엇이 비었을 때
+> 무엇이 죽는지, 조회 축의 정확한 규약, 적재 후 자가 점검 쿼리가 한 곳에 있다.
+> **현재 시드로는 가용 가중치의 약 57%가 모든 POI에서 같은 값(0.5)이다.**
+> 아래는 그중 자주 틀리는 것만 남긴 요약이다.
+
 - 내가 읽는 테이블: `poi` · `segment_affinity` · `review_chunk` · `hotspot_snapshot` ·
   `query_vector_cache` · **`tag_embedding`(신규, `db/migrations/002_tag_embedding.sql`)**
 - 🔴 **`tag_embedding` 16행을 채워달라.** 분위기 10 + 목적 6이고 어휘는
