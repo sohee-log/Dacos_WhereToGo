@@ -87,6 +87,12 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Context" }
+        "503":
+          description: |
+            컨텍스트를 사용할 수 없다 (DB 미가용). 목 모드에서는 발생하지 않는다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/recommend:
     post:
@@ -286,6 +292,16 @@ components:
         age_mix_top:
           type: [string, "null"]
           example: 20대 31%
+        weather_source:
+          type: [string, "null"]
+          enum: [citydata, kma, kma+citydata, mock, null]
+          description: |
+            날씨 출처. 방문 시각이 3시간 이상 뒤면 기상청 단기예보가, 2시간 이내면
+            citydata 실황이 쓰인다. 미세먼지는 언제나 citydata다(단기예보에 대기질이 없다).
+
+            **`mock`인데 실서버라면 키가 없거나 적재가 안 된 것이다.** 화면에 그릴
+            필요는 없지만 디버그 화면(`?debug=1`)에는 띄워 두면 원인 파악이 빨라진다.
+          example: kma+citydata
 
     # ---- 추천 -----------------------------------------------------------
 

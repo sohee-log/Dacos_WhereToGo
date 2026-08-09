@@ -6,7 +6,7 @@
 
 ---
 
-## 지금 상태 (W2 완료)
+## 지금 상태 (W3 완료)
 
 **`MOCK_MODE` 하나로 두 경로가 갈린다.**
 
@@ -30,15 +30,39 @@ DB가 없을 때 목으로 조용히 되돌아가지 않는다. 그러면 "실�
 `POST /api/recommend`가 점수 내림차순 5건을 반환하는 것까지 확인했다.
 지점 반경 안 38 / 밖 62로 갈려 있어 §6.4 재정규화 경로가 양쪽 다 실행된다.
 
+| # | W3 작업 | 상태 | 산출물 |
+|---|---|---|---|
+| B3-1 | 비선형 날씨 로직 | ✅ | [`app/services/context_fit.py`](app/services/context_fit.py) — U자형·임계값 테스트 15개 |
+| B3-2 | `hotspot_snapshot` 소비 | ✅ | [`app/services/live_signals.py`](app/services/live_signals.py) — `fcst`로 **방문 시각** 혼잡 예측 |
+| B3-3 | `GET /api/context/now` | ⚠️ 키 대기 | [`app/services/kma.py`](app/services/kma.py) + [`routers/context.py`](app/routers/context.py) |
+| B3-4 | `weather_sensitivity` 개인화 훅 | ✅ | `context_fit(..., weather_sensitivity)` — DB 경로까지 테스트 |
+
+**B3-3만 반쪽이다.** `KMA_SERVICE_KEY`가 없어 실제 호출을 확인하지 못했다.
+격자 변환·발표 회차 계산·응답 파싱·에러 처리는 전부 순수 함수로 테스트했고,
+키가 생기면 `KMA_SERVICE_KEY=... pytest tests/test_kma.py`로 실호출 1건이 켜진다.
+**키가 없어도 서비스는 돈다** — 조용히 citydata 실황으로 물러선다.
+
+### 날씨가 어디서 오는가 (`weather_source`)
+
+| 방문 시각 | 강수·기온 | 미세먼지 |
+|---|---|---|
+| 3시간 이상 뒤 | 기상청 단기예보 | citydata 실황 (단기예보에 대기질이 없다) |
+| 2시간 이내 | citydata 실황 | citydata 실황 |
+| 소스 없음 | 결정적 프로파일 → `weather_source: "mock"` | 〃 |
+
+응답의 `weather_source`가 **실서버에서 `mock`이면 키가 없거나 적재가 안 된 것이다.**
+
+> ⚠️ **citydata의 `rain_prob`은 0 또는 1이다.** 실황은 확률이 아니라 사실이다.
+> 확률이 필요한 건 3시간 뒤 방문이고 그건 기상청이 담당한다.
+
 **아직 임시인 것 (숨기지 않는다)**
 
 | | 지금 | 언제 바뀌나 |
 |---|---|---|
-| 날씨 | `visit_at` 날짜로 정해지는 결정적 프로파일 | W3 B3-3 (citydata + 기상청) |
-| 혼잡도 | `hotspot_latest.congest_lvl` 실황 | W3 B3-2 (`fcst` 기반 방문시각 예측) |
 | 취향 유사도 | 항상 중립 0.5 (온보딩 임베딩이 없다) | W4 B4-5 |
 | `log_id` | 결정적 해시. **로그 행이 아직 없다** | W4 B4-4 |
 | `explain_mode` | 항상 `template` | W5 |
+| `evidence` | 빈 배열 | W5 B5-1 (RAG 인용) |
 
 ---
 
@@ -113,9 +137,12 @@ roleB/
 │   └── services/
 │       ├── retrieval.py     # ① 후보 생성 SQL + 물러서는 순서 (W2)
 │       ├── scoring.py       # ② 7항 + 재정규화 + 거리 (W2)
-│       ├── pipeline.py      # ①→②→③ 조립, live 경로 (W2)
+│       ├── pipeline.py      # ①→②→③ 조립 + 컨텍스트 병합 (W2·W3)
+│       ├── context_fit.py   # 비선형 날씨 + 체감온도 근사 (W3)
+│       ├── live_signals.py  # hotspot_snapshot 해석 · 방문시각 혼잡 예측 (W3)
+│       ├── kma.py           # 기상청 단기예보 클라이언트 (W3)
 │       └── explain.py       # 템플릿 설명 (W5에 LLM·캐시가 붙는다)
-├── tests/                   # 99개. test_live_db.py는 실 DB가 있을 때만 돈다
+├── tests/                   # 170개. test_live_db.py는 실 DB가 있을 때만 돈다
 ├── tools/
 │   ├── load_seed_db.py      # 개발용 시드 적재 (운영 적재는 A)
 │   └── llm_quota_probe.py   # B1-5 측정 스크립트
@@ -124,8 +151,7 @@ roleB/
 └── requirements.txt         # 임베딩 모델은 여기 들어가지 않는다
 ```
 
-**아직 없는 것 (주차별로 채운다):** `context_fit.py`(W3 — 실측 날씨 소스) ·
-`live_signals.py`(W3 — `fcst` 예측 소비) · `logging_svc.py`(W4) · `rag.py`(W5)
+**아직 없는 것 (주차별로 채운다):** `logging_svc.py`(W4) · `rag.py`(W5)
 
 ---
 
@@ -175,12 +201,37 @@ A가 `seeds/poi_seed.json`을 커밋하면 서버가 자동으로 그쪽을 읽�
 C의 **콜드스타트 안내(C4-5)와 같은 자리**에서 "잠시 후 다시 시도"로 처리하면 된다.
 무한 스피너나 빈 화면이 아니라 재시도 버튼이 필요하다. 응답은 3초 안에 온다
 (커넥션 대기 상한 3초 — 사용자를 10초 세워두지 않는다).
+`GET /api/context/now`도 같은 조건에서 503이다.
+
+### 5. W3에 생긴 것 — `context.weather_source`
+
+날씨를 어디서 가져왔는지 응답에 실린다. `citydata`(실황) · `kma`(기상청 예보) ·
+`kma+citydata` · `mock`(소스 없음). **화면에 그릴 필요는 없다.** 다만
+`?debug=1` 화면(C4-4)에 한 줄 띄워 두면, 배너 날씨가 이상할 때 원인이 즉시 보인다.
+
+`ContextBanner`(C3-4)에 쓸 값이 W3부터 진짜다.
+
+```
+🌧 {weather} · 체감 {feels_like}° · 미세먼지 {pm25_grade}
+📍 {hotspot} · 지금 {congest_now} → {congest_forecast_at_visit} 예상 · {age_mix_top}
+```
+
+`congest_forecast_at_visit`은 **방문 예정 시각**의 예측이다. 지금 혼잡도와 값이
+갈리는 것이 정상이고, 갈릴 때가 이 서비스의 차별점이 보이는 순간이다.
+둘 다 `null`이면 그 좌표가 실시간 지점 반경 밖이라는 뜻이다 — 문구를 지어내지 않는다.
 
 ---
 
 ## A가 알아야 할 것
 
 - 내가 읽는 테이블: `poi` · `segment_affinity` · `review_chunk` · `hotspot_snapshot` · `query_vector_cache`
+- **`hotspot_snapshot.fcst`를 반드시 채워달라.** W3부터 혼잡도는 실황이 아니라
+  `FCST_PPLTN`의 **방문 예정 시각 슬롯**을 쓴다. `fcst`가 비면 실황으로 물러서는데,
+  그러면 "19시에 붐빌 예정"이라는 배너 문구가 사라진다. 형태는 그대로 넣으면 된다 —
+  `[{"FCST_TIME": "2026-08-03 19:00", "FCST_CONGEST_LVL": "붐빔"}, ...]`
+- `weather`(WEATHER_STTS)도 원본 키·문자열 그대로 넣으면 된다. 파서가 `"-"`·`""`·
+  `"1.5mm"`를 전부 받아낸다. 소문자로 정규화해 넣어도 읽힌다
+- 스냅샷이 **40분 이상 오래되면** 응답에 stale로 잡힌다. 15분 폴링이 죽으면 여기서 보인다
 - `hotspot_code`는 **NULL을 그대로 둔다.** 반경 밖 POI에 임의의 코드를 채우면 실시간 신호가 거짓이 된다
 - `attr_confidence < 0.3` POI는 후보에서 자동 제외된다. 별도 분기 코드가 필요 없다
 - `query_vector_cache`는 72행(목적 6 × 날씨 4 × 인원밴드 3)이다. 어휘는 `app/constants.py` 참조

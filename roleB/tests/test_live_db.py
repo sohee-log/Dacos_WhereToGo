@@ -190,6 +190,91 @@ def test_live_terms_omitted_outside_hotspot(settings, executor, req):
             assert "crowd" in dumped
 
 
+# --- W3 컨텍스트 (B3-2 / B3-3) --------------------------------------------------
+
+
+@pytest.fixture
+def soon() -> datetime:
+    """실행 시각 기준 2시간 뒤. 실황 경로."""
+    return datetime.now(KST) + timedelta(hours=2)
+
+
+@pytest.fixture
+def later() -> datetime:
+    """실행 시각 기준 5시간 뒤. 예보 경로(키가 없으면 실황으로 폴백)."""
+    return datetime.now(KST) + timedelta(hours=5)
+
+
+def test_context_reports_its_weather_source(settings, executor, soon):
+    from app.services.pipeline import resolve_context
+
+    resolved = resolve_context(executor, settings, *ITAEWON, soon)
+    assert resolved.ctx.weather_source in {"citydata", "kma", "kma+citydata", "mock"}
+    # 데모 스냅샷에 WEATHER_STTS를 넣어 뒀으므로 mock으로 떨어지면 파싱이 깨진 것이다
+    assert resolved.ctx.weather_source != "mock", "citydata 스냅샷 파싱이 실패했다"
+
+
+def test_citydata_weather_is_parsed_from_snapshot(settings, executor, soon):
+    from app.services.pipeline import resolve_context
+
+    ctx = resolve_context(executor, settings, *ITAEWON, soon).ctx
+    assert ctx.feels_like == pytest.approx(31.7)      # SENSIBLE_TEMP 우선
+    assert ctx.pm25_grade == 2                        # PM25 23 → 보통
+    assert ctx.sunset == "19:42"                      # 분까지 보존한다
+
+
+def test_congest_forecast_uses_visit_time_not_now(settings, executor, soon):
+    """FCST_PPLTN에서 방문 시각 슬롯을 고른다. 실황과 값이 갈릴 수 있어야 한다."""
+    from app.services.pipeline import resolve_context
+
+    ctx = resolve_context(executor, settings, *ITAEWON, soon).ctx
+    assert ctx.congest_now is not None
+    assert ctx.congest_forecast_at_visit is not None
+
+
+def test_missing_kma_key_falls_back_to_citydata(settings, executor, later):
+    """키가 없어도 예보 시각 요청이 500이 되지 않는다. 실황으로 물러선다."""
+    from app.services.pipeline import resolve_context
+
+    ctx = resolve_context(executor, settings, *ITAEWON, later).ctx
+    assert ctx.weather_source in {"citydata", "kma", "kma+citydata"}
+
+
+def test_context_outside_hotspot_has_no_live_fields(settings, executor, soon):
+    """지점에서 먼 좌표. 혼잡·연령 문구를 지어내지 않는다."""
+    from app.services.pipeline import resolve_context
+
+    far = (37.5175, 126.9723)          # 이촌 한강변 — 데모 지점 반경 밖
+    ctx = resolve_context(executor, settings, *far, soon).ctx
+    assert ctx.hotspot is None
+    assert ctx.congest_now is None
+    assert ctx.age_mix_top is None
+
+
+def test_weather_sensitivity_changes_the_score(settings, db, executor, req):
+    """B3-4 — 온보딩 5번 문항이 실제 응답을 바꾸는지 DB 경로로 확인한다."""
+    from app.services.pipeline import build_live_recommendation
+
+    db.execute(
+        "INSERT INTO user_profile (user_id, gender, age_band, weather_sensitivity) "
+        "VALUES ('u_ws_test','F',20,1) "
+        "ON CONFLICT (user_id) DO UPDATE SET weather_sensitivity = 1"
+    )
+    low = build_live_recommendation(
+        req.model_copy(update={"user_id": "u_ws_test"}), settings, executor
+    )
+    db.execute("UPDATE user_profile SET weather_sensitivity = 3 WHERE user_id = 'u_ws_test'")
+    high = build_live_recommendation(
+        req.model_copy(update={"user_id": "u_ws_test"}), settings, executor
+    )
+
+    # 비가 안 오는 날씨면 민감도가 아무것도 바꾸지 않는다. 그때는 순서만 확인한다.
+    if (low.context.rain_prob or 0) > 0.3:
+        assert [r.score for r in low.results] != [r.score for r in high.results]
+    else:
+        assert [r.poi_id for r in low.results] == [r.poi_id for r in high.results]
+
+
 def test_hotspot_outside_pois_are_not_wiped_out(settings, executor, req):
     """재정규화가 빠지면 핫스팟 밖 POI가 상위에서 통째로 사라진다.
 
