@@ -1,0 +1,4 @@
+# 셸 스크립트는 반드시 LF로 체크아웃한다.
+# Windows에서 CRLF로 받으면 "#!/bin/sh\r" 가 되어 훅이 통째로 죽는다.
+.githooks/** text eol=lf
+*.sh        text eol=lf

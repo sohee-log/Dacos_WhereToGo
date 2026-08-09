@@ -195,6 +195,18 @@ export const BUDGET_LABELS = ["1만원 이하", "1~3만원", "3~5만원", "5만�
 | 에러추적 | Sentry Developer | 5,000 이벤트/월 | 선택 |
 | 도메인 | `*.vercel.app` | 무료 | 커스텀 도메인은 **사지 않는다** |
 
+**W1 실검증 결과 (2026-08-10 기준)**
+
+| 항목 | 확인 방법 | 결과 |
+|---|---|---|
+| Render 무료 웹서비스 가동 | `GET https://dacos-wheretogo.onrender.com/health` | ✅ 200 · `{"status":"ok","db":false,"mode":"mock","version":"0.1.0"}` |
+| Vercel prod 배포 | `GET https://dacos-wheretogo-web.vercel.app` | ✅ 200 (아직 create-next-app 기본 화면 — W2에 랜딩 교체) |
+| Render 가입 시 결제수단 요구 | 가입 화면 | ⬜ **C가 기록할 것** (요구했다면 §9 판단표대로 HF Spaces 전환) |
+| Supabase Free 한도 (500MB · 7일 일시정지) | 대시보드 | ⬜ **C가 기록할 것** |
+| 열린데이터광장 인증키 일일 한도 | 발급 화면 | ⬜ **A가 기록할 것** (한도가 낮으면 폴링 15분 → 30분) |
+
+> ⬜ 항목은 화면을 본 사람만 채울 수 있다. 값이 표와 다르면 이 표와 `PLAN.md` §9.2를 함께 고친다.
+
 **탈락한 대안 (다시 검토하지 말 것)**
 
 - ~~Railway~~ — **무료 티어가 없다** (트라이얼 크레딧 소진 후 유료)
@@ -243,7 +255,7 @@ export const BUDGET_LABELS = ["1만원 이하", "1~3만원", "3~5만원", "5만�
 
 ```bash
 # roleC/
-NEXT_PUBLIC_API_BASE=https://yongsan-api.onrender.com
+NEXT_PUBLIC_API_BASE=https://dacos-wheretogo.onrender.com
 NEXT_PUBLIC_KAKAO_JS_KEY=            # 도메인 제한 필수
 
 # roleB/ (Render 환경변수 — 절대 커밋 금지)
@@ -417,7 +429,7 @@ npm install
 npm run dev            # http://localhost:3000
 
 # 목 API 사용 시
-$env:NEXT_PUBLIC_API_BASE = "https://yongsan-api.onrender.com"
+$env:NEXT_PUBLIC_API_BASE = "https://dacos-wheretogo.onrender.com"
 ```
 
 ---
