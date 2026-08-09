@@ -9,5 +9,5 @@ uvicorn[standard]>=0.32,<0.36
 pydantic>=2.9,<3
 pydantic-settings>=2.6,<3
 
-# W2에서 DB를 붙일 때 주석을 푼다. W1 목 서버는 DB 없이 뜬다.
-# psycopg[binary,pool]>=3.2,<4
+# W2부터 DB를 붙인다. MOCK_MODE=true면 설치돼 있어도 풀을 열지 않는다.
+psycopg[binary,pool]>=3.2,<4

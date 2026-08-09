@@ -9,14 +9,35 @@ from __future__ import annotations
 
 import pytest
 
-from app.constants import W, ZONE_BARRIER, ZONES, normalize_pair, zone_multiplier
+from app.constants import (
+    NEUTRAL_TERM,
+    W,
+    ZONE_BARRIER,
+    ZONES,
+    hour_band,
+    normalize_pair,
+    segment_age_bands,
+    zone_multiplier,
+)
 from app.services.scoring import (
+    build_terms,
+    context_fit,
+    crowd_fit,
     distance_penalty,
     effective_distance_m,
     haversine_m,
+    live_segment_match,
+    purpose_match,
+    quality_term,
     renormalized_score,
+    segment_affinity_term,
+    taste_similarity,
     total_score,
 )
+
+CLEAR = {"rain_prob": 0.0, "pm25_grade": 1, "feels_like": 20.0,
+         "visit_hour": 14, "sunset_hour": 19}
+RAINY = {**CLEAR, "rain_prob": 0.8}
 
 FULL_TERMS = {
     "segment_affinity": 0.8,
@@ -124,3 +145,160 @@ def test_total_score_stays_in_range():
     assert 0.0 <= score <= 1.0
     assert pen == pytest.approx(1.0)             # 멀고 비 오면 페널티가 상한
     assert "live_segment_match" not in avail
+
+
+# --- 개별 항 (B2-3) ---------------------------------------------------------
+
+
+def test_purpose_match_ranks_primary_tag_highest():
+    assert purpose_match(["데이트", "혼자"], "데이트") > purpose_match(["혼자", "데이트"], "데이트")
+    assert purpose_match(["혼자", "데이트"], "데이트") > purpose_match(["회식"], "데이트")
+
+
+def test_purpose_match_without_tags_is_neutral_not_zero():
+    """속성 추출이 안 된 것과 '목적에 안 맞는 것'은 다르다."""
+    assert purpose_match([], "데이트") == NEUTRAL_TERM
+    assert purpose_match(None, "데이트") == NEUTRAL_TERM
+    assert purpose_match(["회식"], "데이트") < NEUTRAL_TERM
+
+
+def test_missing_inputs_fall_back_to_neutral():
+    assert segment_affinity_term(None) == NEUTRAL_TERM
+    assert quality_term(None) == NEUTRAL_TERM
+    assert taste_similarity(None, [1.0, 0.0]) == NEUTRAL_TERM
+    assert taste_similarity([0.0, 0.0], [1.0, 0.0]) == NEUTRAL_TERM   # 영벡터
+
+
+def test_taste_similarity_is_cosine():
+    assert taste_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
+    assert taste_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
+    assert taste_similarity([1.0, 0.0], [-1.0, 0.0]) == 0.0           # 음수는 0으로
+
+
+# --- context_fit — 비선형 유지 확인 -------------------------------------------
+
+
+def test_rain_only_penalizes_outdoor():
+    """실내(노출 0)는 비가 와도 그대로여야 한다. 선형 감점이면 여기서 깨진다."""
+    assert context_fit(0.0, RAINY) == pytest.approx(context_fit(0.0, CLEAR))
+    assert context_fit(1.0, RAINY) < context_fit(1.0, CLEAR)
+
+
+def test_pleasant_weather_gives_outdoor_a_bonus():
+    """맑고 15~25도면 야외가 오히려 유리하다. 감점만 있으면 U자형이 아니다."""
+    assert context_fit(1.0, CLEAR) > 1.0
+    assert context_fit(0.0, CLEAR) == pytest.approx(1.0)
+
+
+def test_heat_and_pm_are_threshold_effects():
+    hot = {**CLEAR, "feels_like": 33.0}
+    warm = {**CLEAR, "feels_like": 30.0}
+    assert context_fit(1.0, hot) < context_fit(1.0, warm)
+
+    bad = {**CLEAR, "pm25_grade": 3}
+    ok = {**CLEAR, "pm25_grade": 2}
+    assert context_fit(1.0, bad) < context_fit(1.0, ok)
+
+
+def test_weather_sensitivity_scales_rain_penalty():
+    """온보딩 5번 문항이 실제로 점수를 바꿔야 한다 (ROLE_B §6.3 개인화 훅)."""
+    insensitive = context_fit(1.0, RAINY, weather_sensitivity=1)
+    sensitive = context_fit(1.0, RAINY, weather_sensitivity=3)
+    assert sensitive < insensitive
+
+
+def test_context_fit_is_bounded():
+    extreme = {"rain_prob": 1.0, "pm25_grade": 4, "feels_like": 40.0,
+               "visit_hour": 23, "sunset_hour": 19}
+    assert 0.0 <= context_fit(1.0, extreme) <= 1.5
+
+
+# --- 실시간 항 — None 경로가 핵심 ---------------------------------------------
+
+
+def test_live_terms_are_none_outside_hotspot():
+    assert live_segment_match(None, 20) is None
+    assert live_segment_match({"20": 30.0}, None) is None
+    assert crowd_fit(None, "데이트") is None
+
+
+def test_live_segment_match_accepts_percent_and_fraction():
+    """citydata는 퍼센트(31.2), 픽스처는 비율(0.312)로 온다. 같은 값이어야 한다."""
+    a = live_segment_match({"20": 31.2}, 20)
+    b = live_segment_match({"20": 0.312}, 20)
+    assert a == pytest.approx(b)
+    assert 0.0 <= a <= 1.0
+
+
+def test_live_segment_match_rewards_over_representation():
+    below = live_segment_match({"20": 5.0}, 20)
+    above = live_segment_match({"20": 40.0}, 20)
+    assert above > below
+
+
+def test_crowd_fit_flips_with_purpose():
+    """조용함을 원하는 목적과 활기를 원하는 목적은 혼잡을 반대로 평가한다."""
+    assert crowd_fit("붐빔", "데이트") < crowd_fit("여유", "데이트")
+    assert crowd_fit("붐빔", "회식") > crowd_fit("여유", "회식")
+
+
+def test_crowd_fit_unknown_level_is_neutral_not_crash():
+    """고정 어휘 밖의 값이 와도 KeyError로 터지지 않는다."""
+    assert crowd_fit("혼잡", "데이트") == pytest.approx(0.8)
+
+
+# --- build_terms — 조립 -------------------------------------------------------
+
+POI_OUTSIDE = {
+    "purpose_tags": ["데이트", "혼자"],
+    "outdoor_exposure": 0.1,
+    "quality_score": 0.8,
+}
+HOTSPOT = {"congest_lvl": "여유", "age_rates": {"20": 34.0}}
+
+
+def test_build_terms_drops_live_terms_outside_hotspot():
+    terms = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=None)
+    assert terms["live_segment_match"] is None
+    assert terms["crowd_fit"] is None
+    assert all(terms[k] is not None for k in
+               ("segment_affinity", "purpose_match", "taste_similarity",
+                "context_fit", "quality"))
+
+
+def test_build_terms_fills_live_terms_inside_hotspot():
+    terms = build_terms(
+        POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=HOTSPOT, user_age_band=20
+    )
+    assert terms["live_segment_match"] is not None
+    assert terms["crowd_fit"] == pytest.approx(1.0)      # 데이트 × 여유
+
+
+def test_hotspot_inside_and_outside_score_in_same_range():
+    """ROLE_B W2 B2-3이 명시한 테스트를 실제 조립 경로로도 확인한다."""
+    inside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR,
+                         hotspot=HOTSPOT, user_age_band=20)
+    outside = build_terms(POI_OUTSIDE, purpose="데이트", wx=CLEAR, hotspot=None)
+
+    s_in, _ = renormalized_score(inside)
+    s_out, avail_out = renormalized_score(outside)
+
+    assert 0 <= s_out <= 1
+    assert len(avail_out) == 5
+    assert abs(s_in - s_out) < 0.15
+
+
+# --- segment_affinity 조회 축 --------------------------------------------------
+
+
+def test_hour_band_folds_into_six_buckets():
+    assert hour_band(0) == 0
+    assert hour_band(19) == 4
+    assert hour_band(23) == 5
+    assert hour_band(99) == 5          # 범위를 벗어나도 터지지 않는다
+
+
+def test_segment_age_bands_covers_both_five_year_buckets():
+    """사용자는 '20대'로 답하지만 상권분석 원본은 20·25로 쪼개져 있다."""
+    assert segment_age_bands(20) == (20, 25)
+    assert segment_age_bands(None) == ()
