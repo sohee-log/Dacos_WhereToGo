@@ -14,7 +14,7 @@ info:
 servers:
   - url: http://localhost:8000
     description: 로컬
-  - url: https://wheretogo-api.onrender.com
+  - url: https://dacos-wheretogo.onrender.com
     description: prod (Render Free — 15분 무접속 시 슬립)
 
 tags:
