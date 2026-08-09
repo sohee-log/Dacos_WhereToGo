@@ -12,7 +12,6 @@
 날씨와 점수에 쓰인 날씨가 다르면 "왜 이곳인가"의 설명이 무너지기 때문이다.
 
 아직 임시인 것
-  - log_id: 아직 로그 행을 쓰지 않는다. W4(B4-4)에서 실제 INSERT로 바뀐다.
   - explain_mode: 항상 "template". LLM은 W5다.
   - evidence: 비어 있다. 인용은 W5(B5-1) RAG가 채운다.
 """
@@ -21,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -42,7 +42,7 @@ from app.schemas import (
     RecommendResponse,
     ScoreBreakdown,
 )
-from app.services import kma, live_signals, retrieval
+from app.services import kma, live_signals, logging_svc, retrieval
 from app.services.context_fit import DEFAULT_WEATHER_SENSITIVITY
 from app.services.explain import template_reason
 from app.services.live_signals import HotspotSignals
@@ -174,8 +174,13 @@ def resolve_context(
 # ============================================================================
 
 
-def _log_id(req: RecommendRequest) -> int:
-    """결정적 임시 id. **아직 recommendation_log에 행이 없다** (W4 B4-4에서 대체)."""
+def _fallback_log_id(req: RecommendRequest) -> int:
+    """로그 INSERT가 실패했을 때만 쓰는 결정적 id.
+
+    응답 계약상 `log_id`는 필수라 무언가는 넣어야 한다. 이 값으로 온 피드백은
+    `POST /api/feedback`에서 404가 된다 — 그게 "그 추천은 기록되지 않았다"는
+    정확한 신호다. 정상 경로에서는 이 함수가 호출되지 않는다.
+    """
     key = f"{req.user_id}|{req.purpose.value}|{req.visit_at}|{req.party_size}"
     return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % 900_000 + 100_000
 
@@ -183,6 +188,7 @@ def _log_id(req: RecommendRequest) -> int:
 def build_live_recommendation(
     req: RecommendRequest, settings: Settings, executor: retrieval.Executor
 ) -> RecommendResponse:
+    started = time.perf_counter()
     visit_dt = parse_visit_at(req.visit_at)
     lat, lng = req.location.lat, req.location.lng
 
@@ -198,6 +204,7 @@ def build_live_recommendation(
         budget_band=req.budget_band,
         rain_prob=float(wx.get("rain_prob") or 0.0),
         pm25_grade=int(wx.get("pm25_grade") or DEFAULT_PM_GRADE),
+        user_id=req.user_id,          # 취향 유사도를 DB에서 계산하기 위한 키
     )
     found = retrieval.retrieve(executor, q)
     if not found.candidates:
@@ -233,7 +240,8 @@ def build_live_recommendation(
             affinity=segment_map.get(
                 (poi.get("commercial_area_id"), poi.get("category_l2"))
             ),
-            user_vector=None,          # 온보딩 임베딩은 W4(B4-5)
+            # 코사인은 DB가 계산했다(retrieval.CANDIDATE_SQL). None이면 관측 불가.
+            taste_sim=poi.get("taste_sim"),
             user_age_band=age_band,
             weather_sensitivity=sensitivity,
             # 지점 밖 POI는 둘 다 None → live 항이 빠지고 재정규화된다 (§6.4)
@@ -294,10 +302,42 @@ def build_live_recommendation(
             )
         )
 
+    # --- ④ 로깅 (B4-4) -----------------------------------------------------
+    # 노출된 5건이 아니라 **상위 20건 전부**를 남긴다. 노출됐지만 선택되지 않은
+    # 후보가 없으면 나중에 랭킹 모델을 학습할 수 없다.
+    shown_ids = {r.poi_id for r in results}
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    log_id = logging_svc.write_recommendation_log(
+        executor,
+        user_id=req.user_id,
+        context=logging_svc.context_snapshot(
+            {
+                "purpose": req.purpose.value,
+                "party_size": req.party_size,
+                "budget_band": req.budget_band,
+                "lat": lat,
+                "lng": lng,
+                "visit_at": req.visit_at,
+            },
+            wx,
+            {
+                "weather_source": resolved.ctx.weather_source,
+                "hotspot": resolved.nearest_code,
+                "user_zone": user_zone,
+                "radius_m": found.radius_m,
+                "low_confidence": found.low_confidence,
+                "strategy": found.strategy,
+            },
+        ),
+        candidates=logging_svc.build_candidate_rows(scored, shown_ids),
+        explain_mode="template",
+        latency_ms=latency_ms,
+    )
+
     return RecommendResponse(
         context=resolved.ctx,
         results=results,
-        log_id=_log_id(req),
+        log_id=log_id if log_id is not None else _fallback_log_id(req),
         low_confidence=found.low_confidence,
         radius_expanded=found.radius_expanded,
     )
