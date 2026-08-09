@@ -36,10 +36,11 @@ jobs:
       - name: Scan working tree
         run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
 
-      # 과거 커밋 — 이미 푸시된 것은 막아봐야 소용이 없으므로 CI를 세우지 않고
-      # 로그로만 알린다. 여기서 무언가 나오면 해당 키를 '즉시 폐기·재발급'한다.
-      - name: Scan git history (report only)
-        continue-on-error: true
+      # 과거 커밋 — 2026-08-10 기준 전수 스캔이 깨끗해서 blocking으로 둔다.
+      # 브랜치 안에서 시크릿을 넣었다가 지운 경우는 위 스캔이 못 잡고 여기서 잡힌다.
+      # 여기서 걸리면 파일을 지우는 것으로 끝나지 않는다 — 키를 폐기·재발급하고
+      # 히스토리를 정리한 뒤, 불가피한 오탐이면 .gitleaks.toml 의 commits 에 근거와 함께 추가한다.
+      - name: Scan git history
         run: gitleaks git . --config .gitleaks.toml --redact --no-banner
 
   web:

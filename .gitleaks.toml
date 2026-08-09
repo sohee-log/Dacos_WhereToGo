@@ -8,6 +8,9 @@
 #   2) CI                — .github/workflows/ci.yml 의 secrets 잡 (이쪽이 실제 게이트다)
 #
 # 훅은 각자 설치해야 동작하므로 강제력이 없다. CI를 신뢰한다.
+#
+# 규칙을 쓸 때 주의: 키 이름과 값 사이의 구분자에 \s 를 쓰면 개행까지 먹어서
+# `.env.example` 처럼 "빈 값 + 다음 줄"인 파일이 통째로 오탐이 된다. [ \t"'] 만 쓴다.
 
 title = "Dacos WhereToGo — secret scan"
 
@@ -20,23 +23,30 @@ useDefault = true
 [[rules]]
 id = "kakao-key"
 description = "카카오 REST/Admin/JS 키 (32자 hex)"
-regex = '''(?i)kakao[_\-]?(rest|admin|native|js|javascript)?[_\-]?(api)?[_\-]?key["'\s]*[:=]["'\s]*([0-9a-f]{32})'''
-secretGroup = 3
+regex = '''(?i)kakao[_\-]?(?:rest|admin|native|js|javascript)?[_\-]?(?:api)?[_\-]?key[ \t"']*[:=][ \t"']*([0-9a-f]{32})'''
+secretGroup = 1
 tags = ["kakao"]
 
 [[rules]]
 id = "naver-client-secret"
 description = "네이버 개발자센터 client secret"
-regex = '''(?i)naver[_\-]?(client[_\-]?)?secret["'\s]*[:=]["'\s]*([A-Za-z0-9_\-]{8,})'''
-secretGroup = 2
+regex = '''(?i)naver[_\-]?(?:client[_\-]?)?secret[ \t"']*[:=][ \t"']*([A-Za-z0-9_\-]{8,})'''
+secretGroup = 1
 tags = ["naver"]
 
 [[rules]]
 id = "public-data-service-key"
 description = "공공데이터포털/서울 열린데이터광장 인증키 (기상청·citydata 포함)"
-regex = '''(?i)(seoul[_\-]?citydata|kma[_\-]?service|opendata|service)[_\-]?key["'\s]*[:=]["'\s]*([A-Za-z0-9%+/=]{20,})'''
-secretGroup = 2
+regex = '''(?i)(?:seoul[_\-]?citydata|kma[_\-]?service|opendata|service)[_\-]?key[ \t"']*[:=][ \t"']*([A-Za-z0-9%+/=]{20,})'''
+secretGroup = 1
 tags = ["public-data"]
+
+[[rules]]
+id = "llm-api-key"
+description = "LLM 게이트웨이 API 키"
+regex = '''(?i)llm[_\-]?api[_\-]?key[ \t"']*[:=][ \t"']*([A-Za-z0-9_\-]{16,})'''
+secretGroup = 1
+tags = ["llm"]
 
 [[rules]]
 id = "postgres-url-with-password"
@@ -44,12 +54,11 @@ description = "비밀번호가 박힌 Postgres 접속 문자열 (Supabase DATABA
 regex = '''postgres(?:ql)?://[^\s:@/]+:[^\s:@/]{3,}@[^\s/]+'''
 tags = ["supabase", "database"]
 
-[[rules]]
-id = "llm-api-key"
-description = "LLM 게이트웨이 API 키"
-regex = '''(?i)llm[_\-]?api[_\-]?key["'\s]*[:=]["'\s]*([A-Za-z0-9_\-]{16,})'''
-secretGroup = 1
-tags = ["llm"]
+  # 로컬 도커의 개발용 비밀번호는 시크릿이 아니다 (db/README.md).
+  [[rules.allowlists]]
+  description = "localhost 접속 문자열"
+  regexTarget = "match"
+  regexes = ['''@(?:localhost|127\.0\.0\.1|\[::1\]|host\.docker\.internal)''']
 
 # --- 오탐 제외 --------------------------------------------------------------
 
@@ -62,8 +71,20 @@ paths = [
   '''\.gitleaks\.toml$''',
   # npm이 생성하는 무결성 해시 덩어리 (base64가 시크릿으로 오인된다)
   '''package-lock\.json$''',
+  # Next 빌드 산출물. 커밋되지는 않지만 로컬에서 스캔하면 걸린다
+  # (gitleaks dir 은 .gitignore 를 보지 않는다)
+  '''(^|/)\.next/''',
+  '''(^|/)node_modules/''',
 ]
 regexes = [
   # 문서·설정의 자리표시자
-  '''(?i)(your|dummy|sample|example|changeme|placeholder|xxx+|<[^>]+>)''',
+  '''(?i)(your|dummy|sample|example|changeme|placeholder|devpass|xxx+|<[^>]+>)''',
+]
+commits = [
+  # 2026-08-08 `fix(roleC): 지시서 규칙에 맞게 web 폴더 제거 및 루트 구조로 변경`
+  # 이 커밋에 node_modules 내용물이 roleC/ 밑으로 딸려 들어갔다가 이후 정리됐다.
+  # 히스토리 스캔이 잡는 25건은 전부 그 라이브러리 파일들(zod 테스트의 샘플 JWT 등)이고
+  # 우리 키는 하나도 없다 — 2026-08-10 gitleaks 8.30.1로 전수 확인.
+  # 히스토리는 되돌릴 수 없으므로 이 커밋만 예외로 둔다. 레포 용량 54MB의 원인이기도 하다.
+  "1eab3563b6c560f1de024c479d38fedba3ca3b27",
 ]
