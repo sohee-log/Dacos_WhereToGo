@@ -6,7 +6,7 @@
 
 ---
 
-## 지금 상태 (W4 완료 — 추천 v1)
+## 지금 상태 (W5 완료 — RAG · 설명 생성)
 
 **`MOCK_MODE` 하나로 두 경로가 갈린다.**
 
@@ -73,20 +73,53 @@ DB가 없을 때 목으로 조용히 되돌아가지 않는다. 그러면 "실�
 
 | 규모 | p50 | p95 | 비고 |
 |---|---|---|---|
-| 시드 100건 | 20ms | 24ms | — |
-| **합성 5,000건** | **46ms** | **53ms** | 목표 300ms |
+| 시드 100건 (W4) | 20ms | 24ms | — |
+| 합성 5,000건 (W4) | 46ms | 53ms | 목표 300ms |
+| **합성 5,000건 + RAG (W5)** | **105ms** | **119ms** | 인용 검색·설명 캐시 조회가 붙었다 |
+
+> 측정할 때는 `RATE_LIMIT_PER_MIN=0`으로 둔다. 안 그러면 11번째 요청부터
+> 429가 섞여 **p50이 1ms로 나온다** (실제로 한 번 그렇게 쟀다).
 
 쿼리 플랜도 확인했다 — `idx_poi_geom`(GIST) Bitmap Index Scan, 실행 12.9ms.
 전체 스캔으로 떨어지지 않는다. 규모를 늘리는 방법은
 `python -m tools.load_seed_db --scale 5000` (합성 데이터, 개발 전용).
+
+| # | W5 작업 | 상태 | 산출물 |
+|---|---|---|---|
+| B5-1 | pgvector **사전필터** 검색 | ✅ | [`app/services/rag.py`](app/services/rag.py) |
+| B5-2 | LLM 설명 생성 (JSON 스키마 강제) | ⚠️ 키 대기 | [`app/services/llm.py`](app/services/llm.py) · [`explain.py`](app/services/explain.py) |
+| B5-3 | `explanation_cache` | ✅ | 히트 시 LLM 호출 0회 |
+| B5-4 | **인용 원문 검증** | ✅ | 원문에 없으면 버리고 가장 가까운 청크로 대체 |
+| B5-5 | 쿼터 소진 → 템플릿 자동 전환 | ✅ | `LLM_FORCE_FAIL=true`로 강제 테스트 |
+| B5-6 | 레이트 리밋 (IP당 분당 10회) | ✅ | [`app/ratelimit.py`](app/ratelimit.py) |
+
+**B5-2만 반쪽이다.** `LLM_API_KEY`가 없어 실제 호출을 확인하지 못했다. 호출 규약은
+B1-5 실측(docs/LLM_QUOTA.md) 그대로이고, 응답 파싱·스키마·실패 처리·쿼터 카운터는
+전부 테스트로 덮었다. **키가 없어도 서비스는 돈다** — `explain_mode`가 `template`이 될 뿐이다.
+
+### 설명이 만들어지는 순서
+
+```
+explanation_cache 조회  →  히트하면 LLM 호출 0회       (explain_mode: cache)
+미스면 LLM 호출         →  성공하면 캐시에 저장         (explain_mode: llm)
+키 없음 · 쿼터 · 타임아웃 →  점수 성분 기반 템플릿        (explain_mode: template)
+```
+
+인용은 **어느 경로에서도 원문 발췌**다. LLM이 반환한 문장이 실제 `review_chunk.text`
+안에 없으면 버리고 가장 가까운 원문으로 바꾼다. 대체할 것도 없으면 인용 없이 내보낸다.
+그럴듯하게 지어낸 후기 한 줄이 서비스 전체의 신뢰를 깎는다.
+
+> ⚠️ **W6 캐시 워밍(B6-4) 때 레이트 리밋을 풀어야 한다.** 시나리오 20개를 한 IP에서
+> 연달아 호출하면 11번째부터 429다. 워밍 전에 `RATE_LIMIT_PER_MIN=0`으로 두거나
+> 호출 간격을 6초 이상 벌린다. 이 함정에 발표 전날 걸리면 늦다.
 
 **아직 임시인 것 (숨기지 않는다)**
 
 | | 지금 | 언제 바뀌나 |
 |---|---|---|
 | 취향 유사도 | `tag_embedding`이 비면 중립 0.5 | A가 16행을 채우면 즉시 동작 |
-| `explain_mode` | 항상 `template` | W5 |
-| `evidence` | 빈 배열 | W5 B5-1 (RAG 인용) |
+| `explain_mode` | `LLM_API_KEY`가 없어 항상 `template` | 키가 생기면 `llm`/`cache` |
+| 설명 모델 | 미정 (`gpt-5.4-nano` 기본값) | W6에 nano/mini/sonnet 비교 |
 
 ---
 
@@ -169,8 +202,11 @@ roleB/
 │       ├── kma.py           # 기상청 단기예보 클라이언트 (W3)
 │       ├── logging_svc.py   # ④ recommendation_log — 노출 안 된 후보까지 (W4)
 │       ├── user_svc.py      # 온보딩 프로필 + taste_vector (W4)
-│       └── explain.py       # 템플릿 설명 (W5에 LLM·캐시가 붙는다)
-├── tests/                   # 199개. test_live_db.py는 실 DB가 있을 때만 돈다
+│       ├── rag.py           # ③ 사전필터 벡터 검색 (W5)
+│       ├── llm.py           # OpenAI 호환 게이트웨이 · 쿼터 카운터 (W5)
+│       └── explain.py       # 캐시 → LLM → 템플릿 · 인용 검증 (W5)
+├── ratelimit.py             # IP당 분당 N회 (W5 B5-6)
+├── tests/                   # 276개. test_live_db.py는 실 DB가 있을 때만 돈다
 ├── tools/
 │   ├── load_seed_db.py      # 개발용 시드 적재 (운영 적재는 A)
 │   └── llm_quota_probe.py   # B1-5 측정 스크립트
@@ -179,7 +215,8 @@ roleB/
 └── requirements.txt         # 임베딩 모델은 여기 들어가지 않는다
 ```
 
-**아직 없는 것:** `rag.py`(W5 — pgvector 사전필터 + LLM 설명 생성)
+**남은 것:** W6 — 가중치 조정(B6-1) · 성능 점검(B6-2) · LLM-as-judge(B6-3) ·
+발표 전날 캐시 워밍 스크립트(B6-4)
 
 ---
 
@@ -247,6 +284,15 @@ C의 **콜드스타트 안내(C4-5)와 같은 자리**에서 "잠시 후 다시 
 `congest_forecast_at_visit`은 **방문 예정 시각**의 예측이다. 지금 혼잡도와 값이
 갈리는 것이 정상이고, 갈릴 때가 이 서비스의 차별점이 보이는 순간이다.
 둘 다 `null`이면 그 좌표가 실시간 지점 반경 밖이라는 뜻이다 — 문구를 지어내지 않는다.
+
+### 7. W5에 생긴 것 — `429`와 진짜 인용
+
+- `POST /api/recommend`가 **IP당 분당 10회**로 묶인다. 넘으면 `429` + `Retry-After` 헤더다.
+  서버를 지키는 게 아니라 무료 LLM 쿼터를 지키는 장치다. 다른 엔드포인트는 제한이 없다
+- `evidence`가 이제 채워진다. **전부 `review_chunk`의 원문 발췌**이고, 리뷰가
+  아직 없는 POI는 빈 배열이다 — 문장을 지어내지 않는다
+- `explain_mode`가 실제로 갈린다: `template`(키 없음·쿼터) / `llm` / `cache`.
+  지금은 키가 없어 전부 `template`이다
 
 ### 6. W4에 생긴 것 — `log_id`가 진짜다
 
