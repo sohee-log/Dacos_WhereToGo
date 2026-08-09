@@ -32,17 +32,19 @@ from app.constants import (
     TOP_N,
     dow_type,
     hour_band,
+    party_band,
     segment_age_bands,
 )
 from app.mock_data import weather_profile_for
 from app.schemas import (
     Context,
+    Evidence,
     Recommendation,
     RecommendRequest,
     RecommendResponse,
     ScoreBreakdown,
 )
-from app.services import kma, live_signals, logging_svc, retrieval
+from app.services import explain, kma, live_signals, logging_svc, rag, retrieval
 from app.services.context_fit import DEFAULT_WEATHER_SENSITIVITY
 from app.services.explain import template_reason
 from app.services.live_signals import HotspotSignals
@@ -258,10 +260,58 @@ def build_live_recommendation(
     scored.sort(key=lambda x: (-x[0], x[1]["poi_id"]))
     scored = scored[:TOP_N]
 
-    # --- ③ 상위 4 + 탐색 슬롯 1 (ROLE_B §6.7) --------------------------------
-    top = scored[: RESULT_MAX - 1]
+    # --- ③ RAG — 상위 20개에만 (ROLE_B §6.8) ----------------------------------
+    top20_ids = [poi["poi_id"] for _, poi, _, _ in scored]
+    weather_state = rag.weather_state_of(wx)
+    qvec = rag.fetch_query_vector(executor, req.purpose.value, weather_state, req.party_size)
+    evidence = rag.fetch_evidence(executor, top20_ids, qvec)
+
+    key = explain.cache_key(
+        req.purpose.value, party_band(req.party_size), weather_state, user_zone, top20_ids
+    )
+    explanations, mode = explain.generate(
+        settings,
+        executor,
+        key=key,
+        ctx={
+            "purpose": req.purpose.value,
+            "party_size": req.party_size,
+            "budget_band": req.budget_band,
+            "visit_at": req.visit_at,
+            "weather": resolved.ctx.weather,
+            "feels_like": resolved.ctx.feels_like,
+            "pm25_grade": resolved.ctx.pm25_grade,
+            "hotspot": resolved.ctx.hotspot,
+            "congest": resolved.ctx.congest_forecast_at_visit,
+        },
+        candidates=[poi for _, poi, _, _ in scored],
+        evidence=evidence,
+    )
+
+    # --- 최종 3~5 + 탐색 슬롯 1 (ROLE_B §6.7) ---------------------------------
+    by_id = {poi["poi_id"]: item for item in scored for poi in (item[1],)}
+    chosen: list[tuple] = []
+    reasons: dict[str, str] = {}
+    quotes: dict[str, list[dict[str, str]]] = {}
+
+    for exp in explanations[: RESULT_MAX - 1]:
+        item = by_id.get(exp.poi_id)
+        if item is None:
+            continue
+        chosen.append(item)
+        reasons[exp.poi_id] = exp.reason
+        quotes[exp.poi_id] = exp.evidence
+
+    # LLM이 적게 골랐거나 폴백이면 점수 순으로 채운다. 빈 화면을 만들지 않는다.
+    for item in scored:
+        if len(chosen) >= RESULT_MAX - 1:
+            break
+        if item[1]["poi_id"] not in {c[1]["poi_id"] for c in chosen}:
+            chosen.append(item)
+
     lo, hi = EXPLORATION_RANK_RANGE
-    pool = scored[lo - 1 : hi]
+    picked = {c[1]["poi_id"] for c in chosen}
+    pool = [it for it in scored[lo - 1 : hi] if it[1]["poi_id"] not in picked]
     explore = None
     if pool:
         # 시드를 요청에서 만든다. 같은 요청이면 같은 탐색 결과여야 디버깅이 된다.
@@ -269,11 +319,17 @@ def build_live_recommendation(
         explore = pool[rng.randrange(len(pool))]
 
     results: list[Recommendation] = []
-    for idx, item in enumerate([*top, *([explore] if explore else [])]):
+    for idx, item in enumerate([*chosen, *([explore] if explore else [])]):
         score, poi, avail, dist_pen = item
+        poi_id = poi["poi_id"]
+        # 인용은 LLM이 고른 것 → 없으면 RAG 1순위 청크. 어느 쪽이든 **원문 발췌**다.
+        cited = quotes.get(poi_id) or [
+            {"text": ch["text"], "source": ch.get("source") or "naver_blog"}
+            for ch in (evidence.get(poi_id) or [])[:1]
+        ]
         results.append(
             Recommendation(
-                poi_id=poi["poi_id"],
+                poi_id=poi_id,
                 name=poi["name"],
                 category=poi.get("category_l2") or poi.get("category_l1") or "기타",
                 lat=float(poi["lat"]),
@@ -295,10 +351,14 @@ def build_live_recommendation(
                     ),
                     crowd=(round(avail["crowd_fit"], 3) if "crowd_fit" in avail else None),
                 ),
-                reason=template_reason(poi, wx, req.purpose.value, avail),
-                evidence=[],           # 인용은 W5(B5-1) RAG가 채운다
-                is_exploration=explore is not None and idx == len(top),
-                explain_mode="template",
+                reason=reasons.get(poi_id)
+                or template_reason(poi, wx, req.purpose.value, avail),
+                evidence=[Evidence(**e) for e in cited],
+                is_exploration=explore is not None and idx == len(chosen),
+                # 탐색 슬롯은 LLM이 고른 곳이 아니다. 설명도 템플릿이다.
+                explain_mode=(
+                    "template" if (explore is not None and idx == len(chosen)) else mode
+                ),
             )
         )
 
@@ -330,7 +390,7 @@ def build_live_recommendation(
             },
         ),
         candidates=logging_svc.build_candidate_rows(scored, shown_ids),
-        explain_mode="template",
+        explain_mode=mode,
         latency_ms=latency_ms,
     )
 

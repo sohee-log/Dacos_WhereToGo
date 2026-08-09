@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+from app import ratelimit
 from app.config import get_settings
 from app.db import init_db, shutdown_db
 from app.routers import context, feedback, onboarding, poi, recommend
@@ -63,6 +64,29 @@ async def tag_mock_responses(request: Request, call_next):
     if settings.mock_mode:
         response.headers["X-Mock-Response"] = "true"
     return response
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """추천 엔드포인트만 IP당 분당 N회로 묶는다 (B5-6).
+
+    보호 대상은 서버가 아니라 무료 LLM 쿼터다. `/health`는 절대 막지 않는다 —
+    UptimeRobot의 슬립 방지 핑이 429가 되면 Render가 15분 만에 잠든다.
+    """
+    if ratelimit.is_limited(request.url.path):
+        key = ratelimit.client_key(
+            request.headers, request.client.host if request.client else None
+        )
+        if not ratelimit.limiter.allow(key, settings.rate_limit_per_min):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
+                    "code": "rate_limited",
+                },
+                headers={"Retry-After": str(ratelimit.limiter.retry_after(key))},
+            )
+    return await call_next(request)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"], summary="헬스체크")

@@ -397,6 +397,101 @@ def test_taste_similarity_comes_from_the_database(settings, db, executor, req):
     assert len(set(round(s, 4) for s in sims)) > 1, "모든 POI의 유사도가 같다"
 
 
+# --- W5 RAG · 설명 캐시 ----------------------------------------------------------
+
+
+def test_query_vector_cache_is_hit(settings, executor):
+    """온라인에서 임베딩하지 않는다. 72행 캐시에서 조회한다."""
+    from app.services.rag import fetch_query_vector
+
+    if not executor("SELECT count(*) AS n FROM query_vector_cache", {})[0]["n"]:
+        pytest.skip("query_vector_cache가 비어 있다 (--demo-vectors --reviews 없이 적재됨)")
+    assert fetch_query_vector(executor, "데이트", "비", 2) is not None
+
+
+def test_evidence_is_prefiltered_to_given_pois(settings, executor):
+    """🚩 B5-1 — 사후 필터링을 쓰면 정확도가 붕괴한다."""
+    from app.services.rag import fetch_evidence, fetch_query_vector
+
+    ids = [
+        r["poi_id"]
+        for r in executor("SELECT DISTINCT poi_id FROM review_chunk LIMIT 5", {})
+    ]
+    if not ids:
+        pytest.skip("review_chunk가 비어 있다 (--reviews 없이 적재됨)")
+
+    qvec = fetch_query_vector(executor, "데이트", "맑음", 2)
+    got = fetch_evidence(executor, ids, qvec)
+    assert got, "인용이 하나도 나오지 않았다"
+    assert set(got) <= set(ids), "요청하지 않은 POI의 인용이 섞였다"
+    assert all(len(v) <= 3 for v in got.values()), "POI당 3청크 상한이 지켜지지 않았다"
+
+
+def test_evidence_pushes_sponsored_chunks_back(settings, executor):
+    """인용문이 광고면 신뢰를 잃는다."""
+    from app.services.rag import fetch_evidence
+
+    row = executor(
+        "SELECT poi_id FROM review_chunk GROUP BY poi_id "
+        "HAVING count(*) FILTER (WHERE is_sponsored) > 0 "
+        "   AND count(*) FILTER (WHERE NOT is_sponsored) > 0 LIMIT 1",
+        {},
+    )
+    if not row:
+        pytest.skip("협찬/비협찬이 섞인 POI가 없다")
+    poi_id = row[0]["poi_id"]
+
+    top = fetch_evidence(executor, [poi_id], None)[poi_id][0]["text"]
+    sponsored = {
+        r["text"]
+        for r in executor(
+            "SELECT text FROM review_chunk WHERE poi_id=%(p)s AND is_sponsored",
+            {"p": poi_id},
+        )
+    }
+    assert top not in sponsored
+
+
+def test_recommendation_quotes_come_from_review_chunk(settings, db, executor, req):
+    """인용은 창작이 아니라 원문 발췌다. DB에 실제로 있는 문장인지 본다.
+
+    실제로 상위에 오를 POI에 후기를 직접 심는다. 시드의 리뷰 분포에 기대면
+    (특히 `--scale`로 복제된 POI가 많을 때) 이 테스트가 조용히 skip된다.
+    """
+    from app.services.pipeline import build_live_recommendation
+
+    target = build_live_recommendation(req, settings, executor).results[0].poi_id
+    marker = "통합테스트 전용 후기 — 창가 자리가 조용합니다"
+    db.execute(
+        "INSERT INTO review_chunk (poi_id, source, text, is_sponsored) "
+        "VALUES (%(p)s, 'naver_blog', %(t)s, false)",
+        {"p": target, "t": marker},
+    )
+    try:
+        res = build_live_recommendation(req, settings, executor)
+        quoted = [(r.poi_id, e.text) for r in res.results for e in r.evidence]
+        assert quoted, "리뷰를 심었는데 인용이 하나도 붙지 않았다"
+        assert (target, marker) in quoted
+
+        for poi_id, text in quoted:
+            found = executor(
+                "SELECT 1 FROM review_chunk WHERE poi_id=%(p)s AND text = %(t)s",
+                {"p": poi_id, "t": text},
+            )
+            assert found, f"원문에 없는 인용이다: {text[:30]}"
+    finally:
+        db.execute("DELETE FROM review_chunk WHERE text = %(t)s", {"t": marker})
+
+
+def test_explain_mode_is_template_without_a_key(settings, executor, req):
+    """🚩 B5-5 — 키가 없어도 서비스가 돈다. 500이 아니라 template이다."""
+    from app.services.pipeline import build_live_recommendation
+
+    res = build_live_recommendation(req, settings, executor)
+    assert {r.explain_mode.value for r in res.results} == {"template"}
+    assert all(r.reason for r in res.results)
+
+
 def test_hotspot_outside_pois_are_not_wiped_out(settings, executor, req):
     """재정규화가 빠지면 핫스팟 밖 POI가 상위에서 통째로 사라진다.
 

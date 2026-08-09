@@ -159,6 +159,33 @@ def _row(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+WEATHER_STATES = ("맑음", "비", "미세먼지나쁨", "폭염한파")
+
+UPSERT_CHUNK = """
+INSERT INTO review_chunk (poi_id, source, text, embedding, is_sponsored, written_at)
+SELECT %(poi_id)s, %(source)s, %(text)s, %(embedding)s::halfvec(1024),
+       %(is_sponsored)s, %(written_at)s::date
+WHERE EXISTS (SELECT 1 FROM poi WHERE poi_id = %(poi_id)s)
+  AND NOT EXISTS (
+      SELECT 1 FROM review_chunk WHERE poi_id = %(poi_id)s AND text = %(text)s
+  )
+"""
+
+UPSERT_QUERY_VECTOR = """
+INSERT INTO query_vector_cache (purpose, weather_state, party_band, query_text, embedding)
+VALUES (%(purpose)s, %(weather_state)s, %(party_band)s, %(query_text)s,
+        %(embedding)s::halfvec(1024))
+ON CONFLICT (purpose, weather_state, party_band)
+DO UPDATE SET embedding = EXCLUDED.embedding, query_text = EXCLUDED.query_text
+"""
+
+
+def _blend(a: list[float], b: list[float], w: float) -> list[float]:
+    mixed = [w * x + (1 - w) * y for x, y in zip(a, b)]
+    norm = math.sqrt(sum(x * x for x in mixed)) or 1.0
+    return [x / norm for x in mixed]
+
+
 def _scaled(rows: list[dict[str, Any]], target: int) -> list[dict[str, Any]]:
     """시드를 좌표만 흔들어 target개까지 복제한다. **성능 측정 전용이다.**
 
@@ -189,6 +216,8 @@ def main() -> int:
                     help="가짜 태그 임베딩을 넣어 취향 축(<=>)을 켠다")
     ap.add_argument("--scale", type=int, default=0,
                     help="합성 POI를 복제해 이 개수까지 늘린다 (성능 측정용)")
+    ap.add_argument("--reviews", action="store_true",
+                    help="seeds/review_seed.json을 review_chunk에 적재한다 (RAG 인용용)")
     args = ap.parse_args()
 
     if not args.dsn:
@@ -200,6 +229,54 @@ def main() -> int:
     rows = raw.get("pois", raw) if isinstance(raw, dict) else raw
 
     with psycopg.connect(args.dsn) as conn, conn.cursor() as cur:
+        if args.reviews:
+            review_path = os.path.join(ROOT, "seeds", "review_seed.json")
+            with open(review_path, encoding="utf-8") as f:
+                chunks = json.load(f)
+            # POI 태그 벡터를 기준으로 청크 벡터를 만든다. 같은 POI의 후기끼리
+            # 가깝고, 텍스트에 따라 조금씩 갈린다 — 벡터 검색이 순서를 만들 수 있게.
+            poi_tags = {
+                r["poi_id"]: list(r.get("atmosphere_tags") or [])
+                + list(r.get("purpose_tags") or [])
+                for r in rows
+            }
+            for ch in chunks:
+                emb = None
+                if args.demo_vectors:
+                    base = _mean_vector(poi_tags.get(ch["poi_id"], [])) or _tag_vector(
+                        ch["poi_id"]
+                    )
+                    emb = _to_literal(_blend(base, _tag_vector(ch["text"][:40]), 0.7))
+                cur.execute(
+                    UPSERT_CHUNK,
+                    {
+                        "poi_id": ch["poi_id"],
+                        "source": ch.get("source") or "naver_blog",
+                        "text": ch["text"],
+                        "embedding": emb,
+                        "is_sponsored": bool(ch.get("is_sponsored")),
+                        "written_at": ch.get("written_at"),
+                    },
+                )
+
+            if args.demo_vectors:
+                # 목적 6 × 날씨 4 × 인원밴드 3 = 72행 (PLAN §11.3)
+                for purpose in PURPOSE_TAGS:
+                    for state in WEATHER_STATES:
+                        for band in (1, 2, 3):
+                            text = f"{band}밴드 인원 / {purpose} / {state}"
+                            vec = _blend(_tag_vector(purpose), _tag_vector(state), 0.65)
+                            cur.execute(
+                                UPSERT_QUERY_VECTOR,
+                                {
+                                    "purpose": purpose,
+                                    "weather_state": state,
+                                    "party_band": band,
+                                    "query_text": text,
+                                    "embedding": _to_literal(vec),
+                                },
+                            )
+
         if args.demo_hotspot:
             now = datetime.now(timezone.utc).astimezone()
             fcst = json.dumps(_demo_fcst(now), ensure_ascii=False)
@@ -262,8 +339,15 @@ def main() -> int:
         total = cur.fetchone()[0]
         cur.execute("SELECT count(*) FROM poi WHERE hotspot_code IS NOT NULL")
         mapped = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM review_chunk")
+        chunks_n = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM query_vector_cache")
+        qvec_n = cur.fetchone()[0]
 
-    print(f"poi {total}행 (지점 반경 안 {mapped} / 밖 {total - mapped})")
+    print(
+        f"poi {total}행 (지점 반경 안 {mapped} / 밖 {total - mapped}) · "
+        f"review_chunk {chunks_n} · query_vector_cache {qvec_n}"
+    )
     return 0
 
 
