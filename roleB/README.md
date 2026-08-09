@@ -6,9 +6,43 @@
 
 ---
 
-## 지금 상태 (W1 완료)
+## 지금 상태 (W2 완료)
 
-**목(mock) 모드로 동작한다. DB가 없어도 뜬다.** W1의 산출물은 기능이 아니라 계약이기 때문이다.
+**`MOCK_MODE` 하나로 두 경로가 갈린다.**
+
+| | |
+|---|---|
+| `MOCK_MODE=true` (기본) | 픽스처/시드 JSON. DB 없이 뜬다. C의 개발을 막지 않는다 |
+| `MOCK_MODE=false` | PostGIS 후보 생성 + 7항 스코어링. DB가 없으면 **503** |
+
+DB가 없을 때 목으로 조용히 되돌아가지 않는다. 그러면 "실데이터로 동작한다"가
+거짓으로 통과하고, 화면에는 가짜 장소가 진짜처럼 뜬다.
+
+| # | W2 작업 | 상태 | 산출물 |
+|---|---|---|---|
+| B2-1 | DB 커넥션 풀 | ✅ | [`app/db.py`](app/db.py) — psycopg_pool · 대여 직전 생존 확인 · 죽으면 503 |
+| B2-2 | 후보 생성 (PostGIS) | ✅ | [`app/services/retrieval.py`](app/services/retrieval.py) — 반경 확대 → 신뢰도 완화 → 최근접 폴백 |
+| B2-3 | 7항 스코어링 + 재정규화 | ✅ | [`app/services/scoring.py`](app/services/scoring.py) · 조립은 [`pipeline.py`](app/services/pipeline.py) |
+| B2-4 | `ZONE_BARRIER` 10개 값 | ✅ | [`app/constants.py`](app/constants.py) — 5×5 대칭 전 조합 |
+| B2-5 | `is_open_at()` SQL 함수 | ✅ | [`db/migrations/001_init.sql`](../db/migrations/001_init.sql) §9 (W1에 이미 들어갔다) |
+
+🚩 **게이트 확인:** 시드 100건을 실제 PostGIS(3.4.3 + pgvector 0.8.6)에 적재해
+`POST /api/recommend`가 점수 내림차순 5건을 반환하는 것까지 확인했다.
+지점 반경 안 38 / 밖 62로 갈려 있어 §6.4 재정규화 경로가 양쪽 다 실행된다.
+
+**아직 임시인 것 (숨기지 않는다)**
+
+| | 지금 | 언제 바뀌나 |
+|---|---|---|
+| 날씨 | `visit_at` 날짜로 정해지는 결정적 프로파일 | W3 B3-3 (citydata + 기상청) |
+| 혼잡도 | `hotspot_latest.congest_lvl` 실황 | W3 B3-2 (`fcst` 기반 방문시각 예측) |
+| 취향 유사도 | 항상 중립 0.5 (온보딩 임베딩이 없다) | W4 B4-5 |
+| `log_id` | 결정적 해시. **로그 행이 아직 없다** | W4 B4-4 |
+| `explain_mode` | 항상 `template` | W5 |
+
+---
+
+## W1에 한 것
 
 | # | W1 작업 | 상태 | 산출물 |
 |---|---|---|---|
@@ -32,9 +66,32 @@ cd roleB
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
 
-uvicorn app.main:app --reload --port 8000    # http://localhost:8000/docs
-pytest tests/ -v
+uvicorn app.main:app --reload --port 8000    # 목 모드. http://localhost:8000/docs
+pytest tests/ -v                             # DB 없이 도는 것만
 ```
+
+### live 경로를 로컬에서 켜기 (W2 게이트 재현)
+
+```powershell
+docker run -d --name wheretogo-db -p 5432:5432 `
+  -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=wheretogo postgis/postgis:16-3.4
+# 이 이미지에는 pgvector가 없다. HALFVEC 컬럼 때문에 필요하다
+docker exec wheretogo-db bash -c "apt-get update -qq && apt-get install -y -qq postgresql-16-pgvector"
+
+$env:DATABASE_URL = "postgresql://postgres:devpass@localhost:5432/wheretogo"
+docker cp ..\db\migrations\001_init.sql wheretogo-db:/tmp/
+docker exec wheretogo-db psql -U postgres -d wheretogo -v ON_ERROR_STOP=1 -f /tmp/001_init.sql
+
+python -m tools.load_seed_db --demo-hotspot   # 개발용 적재 (운영 적재는 A)
+$env:MOCK_MODE = "false"
+uvicorn app.main:app --reload --port 8000
+
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+pytest tests/test_live_db.py -v               # 실 PostGIS 통합 테스트
+```
+
+> `db/README.md`에 남아 있던 "PostGIS 이미지에 pgvector가 없으면 어떻게 하나"의 답이
+> 위 `apt-get` 한 줄이다. 이미지를 바꾸지 않아도 되고, prod(Supabase)는 둘 다 기본 제공한다.
 
 배포는 [docs/DEPLOY_MOCK.md](docs/DEPLOY_MOCK.md).
 
@@ -45,23 +102,30 @@ pytest tests/ -v
 ```
 roleB/
 ├── app/
-│   ├── main.py              # FastAPI 앱, CORS, /health
+│   ├── main.py              # FastAPI 앱, CORS, /health, 풀 lifespan
 │   ├── config.py            # 환경변수 (시크릿은 코드에 없다)
 │   ├── constants.py         # 고정 어휘 · 가중치 · ZONE_BARRIER
 │   ├── schemas.py           # Pydantic — C와의 계약
-│   ├── mock_data.py         # W1 목 데이터 (W2에 제거된다)
+│   ├── db.py                # 커넥션 풀 (W2)
+│   ├── timeutil.py          # visit_at 파싱 — 판단 기준은 항상 방문 예정 시각이다
+│   ├── mock_data.py         # 목 데이터 (MOCK_MODE=true 경로)
 │   ├── routers/             # 5개 엔드포인트
 │   └── services/
-│       └── scoring.py       # 재정규화 + 거리 수식 (W2에 항 계산이 채워진다)
-├── tests/                   # 51개 — 계약 대조 · 재정규화 · 목 API 형태
-├── tools/llm_quota_probe.py # B1-5 측정 스크립트
+│       ├── retrieval.py     # ① 후보 생성 SQL + 물러서는 순서 (W2)
+│       ├── scoring.py       # ② 7항 + 재정규화 + 거리 (W2)
+│       ├── pipeline.py      # ①→②→③ 조립, live 경로 (W2)
+│       └── explain.py       # 템플릿 설명 (W5에 LLM·캐시가 붙는다)
+├── tests/                   # 99개. test_live_db.py는 실 DB가 있을 때만 돈다
+├── tools/
+│   ├── load_seed_db.py      # 개발용 시드 적재 (운영 적재는 A)
+│   └── llm_quota_probe.py   # B1-5 측정 스크립트
 ├── docs/                    # 배포 절차 · LLM 한도 기록
 ├── openapi.yaml             # C와의 계약. 변경은 PR
 └── requirements.txt         # 임베딩 모델은 여기 들어가지 않는다
 ```
 
-**아직 없는 것 (주차별로 채운다):** `db.py`(W2) · `retrieval.py`(W2) · `context_fit.py`(W3) ·
-`live_signals.py`(W3) · `rag.py`(W5) · `explain.py`(W5) · `logging_svc.py`(W4)
+**아직 없는 것 (주차별로 채운다):** `context_fit.py`(W3 — 실측 날씨 소스) ·
+`live_signals.py`(W3 — `fcst` 예측 소비) · `logging_svc.py`(W4) · `rag.py`(W5)
 
 ---
 
@@ -98,6 +162,19 @@ roleB/
 
 POI와 후기 문장은 전부 **가상 데이터**다. 실재하는 상호가 아니다.
 A가 `seeds/poi_seed.json`을 커밋하면 서버가 자동으로 그쪽을 읽는다.
+
+### 4. W2에 생긴 것 — `503`을 처리해야 한다
+
+실모드에서 DB에 닿지 못하거나 POI가 아직 적재되지 않으면 **503**이 나간다.
+목 응답으로 대신하지 않는다 — 가짜 장소를 진짜처럼 띄우지 않기 위해서다.
+
+```jsonc
+{ "detail": "추천 데이터를 사용할 수 없습니다: DB에 닿지 못했다: ..." }
+```
+
+C의 **콜드스타트 안내(C4-5)와 같은 자리**에서 "잠시 후 다시 시도"로 처리하면 된다.
+무한 스피너나 빈 화면이 아니라 재시도 버튼이 필요하다. 응답은 3초 안에 온다
+(커넥션 대기 상한 3초 — 사용자를 10초 세워두지 않는다).
 
 ---
 

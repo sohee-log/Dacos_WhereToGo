@@ -39,6 +39,38 @@ def party_band(party_size: int) -> int:
     return 3
 
 
+# segment_affinity 조회 축 (ROLE_B §4.1). 테이블은 4시간 단위 6밴드다.
+SEGMENT_HOUR_BAND_SIZE = 4
+
+
+def hour_band(hour: int) -> int:
+    """0~23시 → 0~5 밴드."""
+    return max(0, min(hour, 23)) // SEGMENT_HOUR_BAND_SIZE
+
+
+def dow_type(weekday: int) -> int:
+    """0=평일 1=주말. `datetime.weekday()`(월=0) 기준."""
+    return 1 if weekday >= 5 else 0
+
+
+def segment_age_bands(age_band: int | None) -> tuple[int, ...]:
+    """사용자 연령대(10년 단위) → segment_affinity의 5세 단위 밴드.
+
+    사용자는 "20대"로 답하지만 상권분석 원본은 20·25로 쪼개져 있다.
+    한쪽만 조회하면 표본의 절반을 버리게 된다.
+    """
+    if age_band is None:
+        return ()
+    return (age_band, age_band + 5)
+
+
+# 값을 관측하지 못했을 때의 중립값.
+#   0을 주면 "정보 없음"이 "최악"으로 바뀐다 (ROLE_B §1.3).
+#   live_* 두 항만 None으로 두고 재정규화하는 이유는 응답 계약 때문이다 —
+#   score_breakdown의 나머지 6개 키는 C가 항상 있다고 가정한다 (schemas.py).
+NEUTRAL_TERM = 0.5
+
+
 # ============================================================================
 # 스코어링 가중치 (ROLE_B §6.2)
 #   live_* 두 항은 옵셔널이다. hotspot_code가 NULL인 POI에는 값이 없고,
@@ -154,6 +186,7 @@ BASELINE_AGE_RATE: dict[int, float] = {
 # ============================================================================
 
 RAIN_TRIGGER = 0.3           # 이 확률을 넘으면 야외 감점 시작
+IS_CLEAR_RAIN_PROB = 0.2     # 이 밑이면 "맑음"으로 보고 야외 보너스를 준다
 RAIN_COEF = 0.7              # weather_sensitivity로 스케일된다
 PM_BAD_GRADE = 3             # 나쁨 이상
 PM_COEF = 0.5

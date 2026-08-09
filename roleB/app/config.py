@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     database_url: str | None = None
     db_pool_min: int = 1
     db_pool_max: int = 5          # Supabase Free 커넥션 한도를 고려한 보수적 값
+    db_pool_timeout: float = 10.0 # 풀 기본 대기 상한(초)
+    # 요청 하나가 커넥션을 기다리는 상한. 짧아야 한다 —
+    # DB가 죽었을 때 사용자를 10초 세워두고 500을 주느니 3초 만에 503이 낫다.
+    db_acquire_timeout: float = 3.0
+    # 느린 쿼리 하나가 무료 티어 워커를 잡아먹지 않게 한다.
+    # 목표 응답은 300ms다 (ROLE_B W4 B4-1). 여유를 두되 무한대는 두지 않는다.
+    db_statement_timeout_ms: int = 4000
 
     # --- CORS ----------------------------------------------------------
     # 쉼표 구분. prod에서는 Vercel 도메인만 남긴다.

@@ -115,6 +115,18 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: |
+            추천 데이터를 사용할 수 없다. 두 경우다.
+              - DB에 닿지 못했다 (Supabase 일시정지·네트워크)
+              - poi 테이블이 비어 있다 (적재 전)
+
+            **목 응답으로 조용히 대체하지 않는다.** 그러면 "실데이터로 동작한다"가
+            거짓으로 통과하고, 화면에는 가짜 장소가 진짜처럼 뜬다.
+            C는 이 코드를 "잠시 후 다시 시도"로 처리한다 (콜드스타트 안내와 같은 자리).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/feedback:
     post:
