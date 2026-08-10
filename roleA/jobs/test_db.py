@@ -5,17 +5,22 @@ def main():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                ORDER BY table_name;
+                SELECT
+                    poi_id,
+                    name,
+                    category_l1,
+                    dong,
+                    zone,
+                    tier
+                FROM poi
+                ORDER BY updated_at DESC
+                LIMIT 10;
             """)
 
-            print("DB 연결 성공!")
-            print("=== 현재 테이블 ===")
+            print("=== POI 확인 ===")
 
             for row in cur.fetchall():
-                print(row[0])
+                print(row)
 
 
 if __name__ == "__main__":
