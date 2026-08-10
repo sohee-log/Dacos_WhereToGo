@@ -1,1 +1,7 @@
 pandas
+openpyxl
+psycopg[binary]
+python-dotenv
+geopandas
+shapely
+pyogrio
