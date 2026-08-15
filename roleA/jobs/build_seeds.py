@@ -226,6 +226,8 @@ def main():
             "name": row["상호명"],
             "category_l1": row["category_l1"],
             "category_l2": row["상권업종소분류명"],
+            "longitude": float(row["경도"]),
+            "latitude": float(row["위도"]),
             "lat": float(row["위도"]),
             "lng": float(row["경도"]),
             "dong": row["행정동명"],
