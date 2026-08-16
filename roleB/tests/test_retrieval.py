@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -198,3 +199,36 @@ def test_segment_affinity_maps_area_category_pairs():
         hour_band=4,
     )
     assert got == {("A1", "카페"): 0.73}
+
+
+# --- 신뢰도 임계값이 설정으로 바뀌는가 (전환기 조정) --------------------------
+#
+# A의 LLM 속성 추출 전에는 attr_confidence가 전 건 0이라 기본값(0.30)으로는
+# 후보가 한 건도 안 남는다. 그때 코드 수정 없이 환경변수만 내려서 전환할 수
+# 있어야 한다. 아래 두 테스트가 그 배선이 끊기지 않았는지 지킨다.
+
+
+def test_conf_min_defaults_to_design_value(query):
+    ex = FakeExecutor([40])
+    retrieve(ex, query)
+    assert ex.candidate_calls[0]["conf_min"] == ATTR_CONFIDENCE_MIN
+
+
+def test_conf_min_override_reaches_sql(query):
+    """설정값이 SQL 파라미터까지 그대로 내려가야 의미가 있다."""
+    q = replace(query, conf_min=0.0, conf_relaxed=0.0)
+    ex = FakeExecutor([40])
+    retrieve(ex, q)
+    assert ex.candidate_calls[0]["conf_min"] == 0.0
+
+
+def test_relaxed_step_uses_overridden_value(query):
+    """완화 단계도 상수가 아니라 설정값을 써야 한다.
+
+    여기가 상수로 남아 있으면 임계값을 0으로 내려도 완화 단계만 0.15로 돌아가
+    '왜 아직도 후보가 없지'가 된다.
+    """
+    q = replace(query, conf_min=0.05, conf_relaxed=0.0)
+    ex = FakeExecutor([0, 0, 0])          # 반경을 넓혀도 계속 0건
+    retrieve(ex, q)
+    assert ex.candidate_calls[-1]["conf_min"] == 0.0

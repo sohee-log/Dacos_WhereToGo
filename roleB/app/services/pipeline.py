@@ -207,6 +207,8 @@ def build_live_recommendation(
         rain_prob=float(wx.get("rain_prob") or 0.0),
         pm25_grade=int(wx.get("pm25_grade") or DEFAULT_PM_GRADE),
         user_id=req.user_id,          # 취향 유사도를 DB에서 계산하기 위한 키
+        conf_min=settings.attr_confidence_min,
+        conf_relaxed=settings.attr_confidence_relaxed,
     )
     found = retrieval.retrieve(executor, q)
     if not found.candidates:

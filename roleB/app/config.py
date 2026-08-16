@@ -11,6 +11,8 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.constants import ATTR_CONFIDENCE_MIN, ATTR_CONFIDENCE_RELAXED
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -38,6 +40,20 @@ class Settings(BaseSettings):
     # --- CORS ----------------------------------------------------------
     # 쉼표 구분. prod에서는 Vercel 도메인만 남긴다.
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    # --- 후보 필터 임계값 (전환기 조정용) --------------------------------
+    # 기본값은 constants의 설계값(0.30 / 0.15)이다. 평상시 건드릴 이유가 없다.
+    #
+    # 여기를 환경변수로 뺀 이유: A의 LLM 속성 추출(A3-2/A4-1)이 끝나기 전에는
+    # `poi.attr_confidence`가 전 건 0이라, 0.30 기준으로는 후보가 한 건도 남지
+    # 않는다. 그러면 최근접 폴백까지 밀려 **순위 없는 3건**이 나간다.
+    # 화면을 먼저 확인해야 하는 상황이면 Render 환경변수만 내려서 전환하고,
+    # 추출이 끝나면 되돌린다. **코드 수정과 재배포가 필요 없어야 한다.**
+    #
+    # 완화한 채로 두면 속성 없는 POI가 그대로 추천에 섞인다. 응답의
+    # `low_confidence`로 드러나긴 하지만, 되돌리는 것을 잊지 않는 게 먼저다.
+    attr_confidence_min: float = ATTR_CONFIDENCE_MIN
+    attr_confidence_relaxed: float = ATTR_CONFIDENCE_RELAXED
 
     # --- 목 데이터 -----------------------------------------------------
     # A가 seeds/poi_seed.json을 커밋하면 자동으로 그걸 읽는다.

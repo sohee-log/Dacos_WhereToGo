@@ -52,6 +52,7 @@ from app.services.scoring import (
     crowd_fit,
     haversine_m,
     purpose_match,
+    quality_term,
     total_score,
 )
 
@@ -305,14 +306,26 @@ def _coerce_seed_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "lng": float(lng),
         "dong": row.get("dong"),
         "zone": row.get("zone"),
-        "hotspot": row.get("hotspot") or row.get("hotspot_code"),
+        "hotspot": (
+            row.get("hotspot")
+            or row.get("hotspot_code")
+            or _derived_hotspot(str(poi_id), float(lat), float(lng))
+        ),
         "outdoor_exposure": float(row.get("outdoor_exposure", 0.0) or 0.0),
         "group_capacity": int(row.get("group_capacity", 4) or 4),
         "price_band": int(row.get("price_band", 2) or 2),
         "noise_level": row.get("noise_level"),
         "purpose_tags": row.get("purpose_tags") or [],
         "atmosphere_tags": row.get("atmosphere_tags") or [],
-        "quality_score": float(row.get("quality_score", 0.6) or 0.6),
+        # ⚠️ 없을 때 임의의 상수(0.6)를 넣지 않는다. **None으로 두고 중립(0.5)**
+        # 처리를 live와 같은 함수에 맡긴다. A의 시드에는 sentiment_score만 있고
+        # quality_score가 없는데(산출이 A4-4다), 여기서 0.6을 채우면 목에서는
+        # 0.6, 실서버에서는 0.5로 **같은 POI의 순위가 갈린다.**
+        "quality_score": (
+            float(row["quality_score"])
+            if row.get("quality_score") is not None
+            else None
+        ),
         "mention_count": int(row.get("mention_count", 0) or 0),
         "review_count": int(row.get("review_count", 0) or 0),
         "attr_confidence": float(row.get("attr_confidence", 0.5) or 0.5),
@@ -322,12 +335,45 @@ def _coerce_seed_row(row: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+# 시드에 hotspot_code가 없을 때 목에서 지점을 붙이는 비율.
+# 1.0으로 두면 지점 한복판 요청의 **결과 전부**가 반경 안이 되어, 반대쪽 UI
+# (키가 없는 카드)를 화면에서 확인할 수 없다. 0.0이면 그 반대가 된다.
+# 두 경우가 한 응답에 같이 나오는 것이 목의 목적이다.
+_HOTSPOT_COVERAGE = 0.6
+
+
+def _derived_hotspot(poi_id: str, lat: float, lng: float) -> str | None:
+    """시드에 hotspot_code가 없을 때 쓰는 목 전용 유도값.
+
+    A의 W2 시드는 전 건 NULL이다 — 핫스팟 매핑이 A3-3이라 아직 이르다. 그대로
+    두면 목 응답에 `live_segment`/`crowd` 키가 **한 건도 안 생겨서** C가
+    "실시간 신호 있는 카드"를 영영 못 본다. 내장 픽스처는 두 경우를 일부러
+    섞어 뒀는데, 시드를 읽는 순간 그 커버리지가 사라진다.
+
+    지점 반경(1km) 규칙을 먼저 적용하고 — 목 컨텍스트의 hotspot도 같은 함수를
+    쓰므로 응답 안에서 앞뒤가 맞는다 — 그중 일부는 poi_id 해시로 일부러 뺀다.
+    실제로도 지점 근처 POI가 전부 반경 안인 것은 아니고, 무엇보다 **한 응답에
+    두 경우가 같이 나와야** C가 양쪽 렌더링을 다 확인할 수 있다.
+
+    A가 `hotspot_code`를 채우면 이 함수는 호출되지 않는다.
+    """
+    near = nearest_hotspot(lat, lng)
+    if near is None:
+        return None
+    gate = hashlib.sha256(f"hotspot|{poi_id}".encode()).digest()[0] / 255
+    return near if gate < _HOTSPOT_COVERAGE else None
+
+
 def _pseudo_terms(poi_id: str) -> dict[str, float]:
     """poi_id 해시로 만든 결정적 점수 성분. 시드에 성분이 없을 때만 쓴다."""
     h = hashlib.sha256(poi_id.encode()).digest()
     return {
         "segment_affinity": 0.45 + h[0] / 255 * 0.5,
         "taste_similarity": 0.40 + h[1] / 255 * 0.55,
+        # 지점 반경 안일 때만 쓰인다(_terms_for가 in_hotspot으로 가른다).
+        # 이게 없으면 시드 POI는 지점 안에 있어도 live_segment 키가 안 생겨서,
+        # C가 그 배지를 화면에서 확인할 방법이 없다.
+        "live_segment_match": 0.50 + h[2] / 255 * 0.45,
     }
 
 
@@ -463,7 +509,8 @@ def _terms_for(
         "purpose_match": purpose_match(poi.get("purpose_tags"), purpose),
         "taste_similarity": base.get("taste_similarity", 0.6),
         "context_fit": context_fit(poi.get("outdoor_exposure", 0.0), wx),
-        "quality": poi.get("quality_score", 0.6),
+        # live 경로와 같은 함수를 탄다. 값이 없으면 중립(0.5)이지 0.6이 아니다.
+        "quality": quality_term(poi.get("quality_score")),
         # ↓ 핫스팟 밖이면 None. 절대 0을 넣지 않는다 (ROLE_B §1.3)
         "live_segment_match": base.get("live_segment_match") if in_hotspot else None,
         "crowd_fit": crowd_fit(wx["congest_at_visit"], purpose) if in_hotspot else None,
