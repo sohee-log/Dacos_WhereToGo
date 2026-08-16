@@ -136,3 +136,39 @@ def test_임계값을_낮추면_후보는_남는다():
     c = _check(label="attr_confidence ≥ 임계값", fatal=True, sql="attr_confidence >= ")
     rd.run(FakeCursor({"attr_confidence >= ": {"filled": 6644, "total": 6644}}), c, {})
     assert rd.mark_for(c) == "✅"
+
+
+# ── 0건은 아닌데 극소수인 경우 ─────────────────────────────────────────
+#
+# 0건은 최근접 폴백으로 티가 난다. 극소수는 **정상처럼 보이면서** 추천이 그
+# 몇 건에만 쏠린다. W1 seed의 난수 속성 100건이 DB에 남아 있으면 정확히
+# 이 모양이 되고, 그 100건은 실제 리뷰가 아니라 random으로 만든 값이다.
+
+
+def test_극소수_통과는_경고로_잡는다():
+    c = _check(label="attr_confidence", fatal=True, thin_below=0.10)
+    rd.run(FakeCursor({"SELECT 1": {"filled": 100, "total": 6644}}), c, {})
+    assert c.thin
+    assert rd.mark_for(c) == "⚠️", "치명은 아니지만 통과로 넘기면 안 된다"
+
+
+def test_충분히_통과하면_경고하지_않는다():
+    c = _check(label="attr_confidence", fatal=True, thin_below=0.10)
+    rd.run(FakeCursor({"SELECT 1": {"filled": 5000, "total": 6644}}), c, {})
+    assert not c.thin
+    assert rd.mark_for(c) == "✅"
+
+
+def test_0건은_극소수가_아니라_치명이다():
+    """둘을 같은 것으로 다루면 결론 문구가 뒤바뀐다."""
+    c = _check(label="attr_confidence", fatal=True, thin_below=0.10)
+    rd.run(FakeCursor({"SELECT 1": {"filled": 0, "total": 6644}}), c, {})
+    assert not c.thin
+    assert rd.mark_for(c) == "❌"
+
+
+def test_실제_점검표에_극소수_경고가_걸려있다():
+    """설정을 빠뜨리면 이 경로가 영영 안 돈다."""
+    conf = next(c for c in rd.CHECKS if "attr_confidence" in c.label)
+    assert conf.thin_below is not None
+    assert conf.thin_note

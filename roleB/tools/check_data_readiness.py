@@ -71,7 +71,12 @@ class Check:
     sql: str
     owner: str = "A"
     fatal: bool = False         # 비면 후보 자체가 안 남는가
+    # 0은 아닌데 이만큼도 안 되면 경고한다. 0건보다 **더 위험할 수 있다** —
+    # 0건은 최근접 폴백으로 티가 나지만, 극소수면 정상처럼 보이면서 추천이
+    # 그 몇 건에만 쏠린다. W1 seed의 난수 속성이 남아 있는 경우가 정확히 이것이다.
+    thin_below: float | None = None
     note: str = ""
+    thin_note: str = ""
     filled: int = 0
     total: int = 0
     error: str = ""
@@ -88,6 +93,13 @@ class Check:
         순위는 움직인다. 반대로 0건이면 전 POI가 같은 값이라 기여가 정확히 0이다.
         """
         return self.total > 0 and self.rate >= 0.5
+
+    @property
+    def thin(self) -> bool:
+        """0건은 아닌데 후보 풀이라고 부르기 민망한 수준인가."""
+        if self.thin_below is None or self.error:
+            return False
+        return 0 < self.rate < self.thin_below
 
 
 # 채움률은 전부 poi 전체를 분모로 잡는다. "몇 건 있느냐"가 아니라
@@ -108,7 +120,13 @@ CHECKS: list[Check] = [
             "SELECT count(*) FILTER (WHERE attr_confidence >= %(conf_min)s) AS filled,"
             " count(*) AS total FROM poi"
         ),
+        thin_below=0.10,
         note="0이면 하드필터가 전멸 → 최근접 폴백(순위 없는 3건)",
+        thin_note=(
+            "통과가 극소수다. 추천이 이 몇 건에만 쏠리는데 겉보기는 정상이라 "
+            "0건보다 알아채기 어렵다. W1 seed의 난수 속성이 남아 있지 않은지 "
+            "확인한다 (roleA `qc_final_poi_db.py` → 'mock 값 의심 POI')"
+        ),
     ),
     Check(
         label="segment_affinity 조인",
@@ -215,6 +233,8 @@ def run(cur, check: Check, params: dict) -> None:
 def mark_for(check: Check) -> str:
     if check.error:
         return MARKS["bad"]
+    if check.thin:
+        return MARKS["warn"]
     if check.fatal:
         return MARKS["ok"] if check.filled > 0 else MARKS["bad"]
     if check.filled == 0:
@@ -232,8 +252,9 @@ def render(checks: list[Check]) -> None:
         counts = f"{c.filled:,}/{c.total:,}"
         weight = f"  가중치 {W[c.term]:.2f}" if c.term else ""
         print(f"  {mark_for(c)} {c.label:<{width}}  {pct}  ({counts}){weight}")
-        if c.note and mark_for(c) != MARKS["ok"]:
-            print(f"      └ {c.note}")
+        note = c.thin_note if (c.thin and c.thin_note) else c.note
+        if note and mark_for(c) != MARKS["ok"]:
+            print(f"      └ {note}")
 
 
 def snapshot_age(cur) -> str:
@@ -301,6 +322,7 @@ def main() -> int:
 
     # --- 결론 ---------------------------------------------------------------
     fatal = [c for c in CHECKS if c.fatal and (c.error or c.filled == 0)]
+    thin = [c for c in CHECKS if c.thin]
     scored = [c for c in CHECKS if c.term]
     live_w = sum(W[c.term] for c in scored if c.alive)
     total_w = sum(W[c.term] for c in scored)
@@ -312,6 +334,12 @@ def main() -> int:
         for c in fatal:
             print(f"   {c.label}: {c.note}")
         print("   → 최근접 폴백으로 밀려 '순위 없는 3건'이 나간다.")
+    elif thin:
+        print(f"{MARKS['warn']} 후보는 남지만 **극소수다.** 0건보다 알아채기 어렵다.")
+        for c in thin:
+            print(f"   {c.label}: {c.filled:,}/{c.total:,} ({c.rate * 100:.1f}%)")
+            print(f"      {c.thin_note or c.note}")
+        print("   → 겉보기는 정상인데 추천이 그 몇 건에만 쏠린다. 먼저 확인한다.")
     else:
         print(f"{MARKS['ok']} 후보는 남는다. 추천이 최근접 폴백으로 주저앉지는 않는다.")
 
