@@ -1,7 +1,21 @@
 // lib/types.ts
-import { PURPOSES } from "./constants";
+import { PURPOSES, ATMOSPHERES } from "./constants"; // 1. ATMOSPHERES 추가
 
 export type Purpose = typeof PURPOSES[number];
+export type Atmosphere = typeof ATMOSPHERES[number]; // 2. 분위기 타입 추가
+
+// 3. 온보딩 요청/응답 타입 추가 (Form 연동용)
+export interface OnboardingRequest {
+  age_band: number;
+  atmospheres: Atmosphere[];
+  purposes: Purpose[];
+  budget_band: number;
+  weather_sensitivity: number;
+}
+
+export interface OnboardingResponse {
+  user_id: string;
+}
 
 // 추천 요청 (Request) 타입
 export type RecommendRequest = {
