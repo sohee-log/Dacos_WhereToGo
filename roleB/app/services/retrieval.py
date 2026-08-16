@@ -73,7 +73,11 @@ FROM poi p
 {_TASTE_JOIN}
 WHERE ST_DWithin(p.geom, {_POINT}, %(radius_m)s)
   AND is_open_at(p.business_hours, %(visit_at)s)
-  AND p.group_capacity >= %(party_size)s
+  -- 인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다. NULL을 그대로
+  -- 비교하면 3값 논리로 NULL이 되어 그 POI가 조건과 무관하게 항상 빠진다.
+  -- 속성 미확보는 배제가 아니라 순위 강등으로 다룬다 (ROLE_B §1.3) —
+  -- 실제로 attr_confidence가 그 역할을 하고, price_band도 같은 규칙이다.
+  AND (p.group_capacity IS NULL OR p.group_capacity >= %(party_size)s)
   AND (%(rain_prob)s < 0.6 OR p.outdoor_exposure <= 0.7)
   AND (%(pm25_grade)s < 4 OR p.outdoor_exposure <= 0.5)
   AND (p.price_band IS NULL OR p.price_band <= %(budget_band)s)

@@ -115,6 +115,28 @@ def test_party_size_hard_filter_applies(executor, query):
             assert row["group_capacity"] >= 20 or row["attr_confidence"] is not None
 
 
+def test_null_group_capacity_is_not_dropped(executor, query):
+    """인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다.
+
+    NULL을 그대로 비교하면 3값 논리로 WHERE가 NULL이 되어, 그 POI가 인원 수와
+    무관하게 **항상** 후보에서 빠진다. 에러도 경고도 없이 사라지는 종류다.
+    실제로 A의 `--clear-seed-mock`이 이 컬럼을 NULL로 되돌린다.
+    """
+    null_rows = executor(
+        "SELECT count(*) AS n FROM poi WHERE group_capacity IS NULL", {}
+    )[0]["n"]
+    if not null_rows:
+        pytest.skip("NULL group_capacity 행이 없다 — 이 경로를 확인할 수 없다")
+
+    # 실제 후보 SQL을 그대로 태운다. 조건을 여기 다시 적으면 코드가 바뀔 때 어긋난다.
+    big = retrieval.RetrievalQuery(**{**query.__dict__, "party_size": 20})
+    params = retrieval._params(big, 100_000.0, 0.0)
+    rows = executor(retrieval.CANDIDATE_SQL, params)
+    assert any(r["group_capacity"] is None for r in rows), (
+        "인원 수를 모르는 POI가 하드필터에서 통째로 빠졌다"
+    )
+
+
 def test_rain_hard_cut_excludes_exposed_places(executor, query):
     rainy = retrieval.RetrievalQuery(**{**query.__dict__, "rain_prob": 0.9})
     result = retrieval.retrieve(executor, rainy)

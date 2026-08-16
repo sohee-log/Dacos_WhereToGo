@@ -197,6 +197,25 @@ A의 시드를 읽으면서 드러난 것이다. 둘 다 **에러 없이 순위�
 사라져서, C가 그 배지와 `undefined` 처리(§3.3)를 화면에서 확인할 수 없었다.
 A가 `hotspot_code`를 채우면 유도값은 쓰이지 않는다.
 
+### 4. 하드필터의 NULL 안전성
+
+`group_capacity >= :party_size`에 NULL이 들어오면 3값 논리로 WHERE가 NULL이
+되어 **그 POI가 인원 수와 무관하게 항상 빠진다.** 에러도 경고도 없다.
+A의 `--clear-seed-mock`이 실제로 이 컬럼을 NULL로 되돌리므로 가상의 걱정이 아니다.
+
+인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다. 속성 미확보는
+배제가 아니라 순위 강등으로 다룬다(§1.3) — 그 역할은 `attr_confidence`가 한다.
+`price_band`와 같은 규칙으로 맞췄다.
+
+```sql
+AND (p.group_capacity IS NULL OR p.group_capacity >= :party_size)
+```
+
+> `outdoor_exposure`도 같은 모양이지만 **일부러 두었다.** 우천 하드컷은
+> "야외일지 모르는 곳"을 비 오는 날 빼는 것이 목적이라, 여기서 NULL을 통과시키면
+> 필터의 취지가 사라진다. DDL 기본값이 `0.0`이라 실제 NULL은
+> `--clear-seed-mock`이 지난 자리에만 생긴다.
+
 ---
 
 **아직 임시인 것 (숨기지 않는다)**

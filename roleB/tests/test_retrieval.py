@@ -232,3 +232,18 @@ def test_relaxed_step_uses_overridden_value(query):
     ex = FakeExecutor([0, 0, 0])          # 반경을 넓혀도 계속 0건
     retrieve(ex, q)
     assert ex.candidate_calls[-1]["conf_min"] == 0.0
+
+
+# --- NULL 안전성 (3값 논리로 조용히 사라지는 것 방지) --------------------------
+
+
+def test_null_safe_columns_are_guarded_in_sql():
+    """`col >= :v`에 NULL이 들어오면 WHERE가 NULL이 되어 그 행이 **항상** 빠진다.
+
+    에러도 경고도 없다. 속성을 아직 모르는 POI가 조용히 사라지는데, 그건
+    "조건에 안 맞는다"가 아니라 "모른다"이므로 배제가 아니라 순위 강등으로
+    다뤄야 한다 (ROLE_B §1.3). 실제로 A의 `--clear-seed-mock`이 이 컬럼들을
+    NULL로 되돌린다.
+    """
+    for col in ("group_capacity", "price_band"):
+        assert f"p.{col} IS NULL OR" in CANDIDATE_SQL, f"{col}에 NULL 가드가 없다"
