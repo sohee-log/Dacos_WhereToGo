@@ -14,7 +14,7 @@ info:
 servers:
   - url: http://localhost:8000
     description: 로컬
-  - url: https://wheretogo-api.onrender.com
+  - url: https://dacos-wheretogo.onrender.com
     description: prod (Render Free — 15분 무접속 시 슬립)
 
 tags:
@@ -62,6 +62,12 @@ paths:
                 properties:
                   user_id: { type: string, example: u_a91f3c }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "503":
+          description: |
+            프로필을 저장할 수 없다 (DB 미가용). 목 모드에서는 발생하지 않는다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/context/now:
     get:
@@ -87,6 +93,12 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Context" }
+        "503":
+          description: |
+            컨텍스트를 사용할 수 없다 (DB 미가용). 목 모드에서는 발생하지 않는다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/recommend:
     post:
@@ -115,6 +127,18 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: |
+            추천 데이터를 사용할 수 없다. 두 경우다.
+              - DB에 닿지 못했다 (Supabase 일시정지·네트워크)
+              - poi 테이블이 비어 있다 (적재 전)
+
+            **목 응답으로 조용히 대체하지 않는다.** 그러면 "실데이터로 동작한다"가
+            거짓으로 통과하고, 화면에는 가짜 장소가 진짜처럼 뜬다.
+            C는 이 코드를 "잠시 후 다시 시도"로 처리한다 (콜드스타트 안내와 같은 자리).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/feedback:
     post:
@@ -130,8 +154,16 @@ paths:
             schema: { $ref: "#/components/schemas/FeedbackRequest" }
       responses:
         "204": { description: 기록됨 }
+        "503":
+          description: DB 미가용
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
-          description: log_id 없음
+          description: |
+            log_id 없음. **그 추천이 기록되지 않았다는 뜻이다.**
+            추천 응답의 log_id가 로그 INSERT 실패로 폴백 값이었을 때 여기로 온다.
+            C는 무시하고 넘어가면 된다 — 피드백 한 건이 빠질 뿐 흐름은 막히지 않는다.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -150,6 +182,11 @@ paths:
               schema: { $ref: "#/components/schemas/PoiDetail" }
         "404":
           description: 없음
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: DB 미가용
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -274,6 +311,16 @@ components:
         age_mix_top:
           type: [string, "null"]
           example: 20대 31%
+        weather_source:
+          type: [string, "null"]
+          enum: [citydata, kma, kma+citydata, mock, null]
+          description: |
+            날씨 출처. 방문 시각이 3시간 이상 뒤면 기상청 단기예보가, 2시간 이내면
+            citydata 실황이 쓰인다. 미세먼지는 언제나 citydata다(단기예보에 대기질이 없다).
+
+            **`mock`인데 실서버라면 키가 없거나 적재가 안 된 것이다.** 화면에 그릴
+            필요는 없지만 디버그 화면(`?debug=1`)에는 띄워 두면 원인 파악이 빨라진다.
+          example: kma+citydata
 
     # ---- 추천 -----------------------------------------------------------
 

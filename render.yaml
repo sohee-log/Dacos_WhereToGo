@@ -25,9 +25,12 @@ services:
       # W1은 목 모드. W2에 DATABASE_URL을 넣으면서 false로 내린다.
       - key: MOCK_MODE
         value: "true"
-      # 프론트 도메인이 정해지면 C가 여기에 Vercel URL을 추가한다. * 는 쓰지 않는다.
+      # prod 프론트 도메인. * 는 쓰지 않는다.
+      # 주의: preview 배포(dacos-wheretogo-web-<해시>.vercel.app)는 도메인이 매번 바뀌므로
+      #       여기 넣어도 소용이 없다. preview에서 API를 붙여야 하면 Vercel 쪽에
+      #       고정 브랜치 도메인을 만들어 그 주소를 추가한다.
       - key: CORS_ORIGINS
-        value: "http://localhost:3000"
+        value: "http://localhost:3000,http://127.0.0.1:3000,https://dacos-wheretogo-web.vercel.app"
       # LLM은 W5부터 쓴다. URL·모델명은 시크릿이 아니다 (실측치: roleB/docs/LLM_QUOTA.md)
       - key: LLM_BASE_URL
         value: "https://factchat-cloud.mindlogic.ai/v1/gateway"

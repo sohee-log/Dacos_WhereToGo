@@ -1,0 +1,15 @@
+# 프로젝트 가상환경
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# 환경변수 / API 키
+.env
+.env.*
+!.env.example
+
+# A 역할 원본 데이터
+roleA/data/*
+!roleA/data/.gitkeep

@@ -163,7 +163,14 @@ Next.js  ─────▶  FastAPI  ─────▶  PostgreSQL
 
 ---
 
-# Dacos WhereToGo 
-- **배포 주소 (Prod URL):** https://dacos-wheretogo-web.vercel.app
+## 배포 주소
+
+| | |
+|---|---|
+| 웹 (Vercel) | https://dacos-wheretogo-web.vercel.app |
+| API (Render) | https://dacos-wheretogo.onrender.com |
+| 헬스체크 | https://dacos-wheretogo.onrender.com/health |
+
+API는 무료 티어라 15분 무접속 시 잠든다. 첫 요청이 1분쯤 걸릴 수 있다.
 
 ---

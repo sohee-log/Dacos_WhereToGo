@@ -42,19 +42,22 @@ pytest tests/ -v
    그 경우 4번의 백업 경로로 간다.
 2. New → **Blueprint** → 이 레포 선택 → `render.yaml`이 자동 인식된다.
 3. 생성된 서비스의 Environment에서 `CORS_ORIGINS`에 Vercel 도메인을 추가한다.
-   (W1에는 `http://localhost:3000`만으로 충분하다.)
+   **W1에도 필요하다.** W1 게이트에 "Vercel 배포본에서 API 호출"이 들어 있어서
+   `http://localhost:3000`만 넣어두면 게이트에서 막힌다 (ROLE_C_WEB.md §5 배포순서 5).
+   ⚠️ 대시보드 값이 `render.yaml`보다 우선한다. 양쪽을 함께 고쳐야 다음 동기화에서 원복되지 않는다.
 4. 배포 후 확인:
 
 ```bash
-curl https://<서비스명>.onrender.com/health
-curl -X POST https://<서비스명>.onrender.com/api/recommend \
+curl https://dacos-wheretogo.onrender.com/health
+curl -X POST https://dacos-wheretogo.onrender.com/api/recommend \
   -H "Content-Type: application/json" \
   -d '{"user_id":"u_1","purpose":"데이트","party_size":2,"budget_band":3,
        "location":{"lat":37.5340,"lng":126.9946},
        "visit_at":"2026-08-03T19:00:00+09:00"}'
 ```
 
-5. **prod URL을 C에게 전달**하고 `roleB/openapi.yaml`의 `servers`를 실제 URL로 갱신한다.
+5. ~~**prod URL을 C에게 전달**하고 `roleB/openapi.yaml`의 `servers`를 실제 URL로 갱신한다.~~
+   → 완료 (2026-08-10). prod는 `https://dacos-wheretogo.onrender.com` 이다.
 
 > 첫 요청은 슬립에서 깨어나느라 최대 1분 걸린다. 이건 고장이 아니다.
 > C가 UptimeRobot에 `/health`를 5분 간격으로 등록하면 사라진다.
@@ -63,7 +66,7 @@ curl -X POST https://<서비스명>.onrender.com/api/recommend \
 
 ## 3. UptimeRobot (C 담당, W2)
 
-- Monitor Type: HTTP(s) / URL: `https://<서비스명>.onrender.com/health` / Interval: 5분
+- Monitor Type: HTTP(s) / URL: `https://dacos-wheretogo.onrender.com/health` / Interval: 5분
 
 ### ⚠️ 750시간은 생각보다 빡빡하다 (2026-08-07 확인)
 

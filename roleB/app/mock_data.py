@@ -22,33 +22,21 @@ import hashlib
 import json
 import os
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
 from app.config import Settings, seed_file_path
 from app.constants import (
-    AFTER_SUNSET_COEF,
     ATTR_CONFIDENCE_MIN,
     ATTR_CONFIDENCE_RELAXED,
-    CONTEXT_FIT_MAX,
-    CROWD_FIT_LIVELY,
-    CROWD_FIT_NEUTRAL,
-    CROWD_FIT_QUIET,
     DEFAULT_RADIUS_M,
-    EXTREME_TEMP_COEF,
     MAX_RADIUS_RETRY,
-    PLEASANT_BONUS,
-    PLEASANT_RANGE,
-    PM_COEF,
-    PURPOSE_LIVELY,
-    PURPOSE_QUIET,
     RADIUS_EXPAND_FACTOR,
-    RAIN_COEF,
-    RAIN_TRIGGER,
     RESULT_MAX,
     RESULT_MIN,
     WEATHER_STATES,
 )
+from app.timeutil import KST, parse_visit_at  # noqa: F401  (기존 임포트 경로 유지)
 from app.schemas import (
     Context,
     Evidence,
@@ -58,9 +46,14 @@ from app.schemas import (
     RecommendResponse,
     ScoreBreakdown,
 )
-from app.services.scoring import haversine_m, total_score
-
-KST = timezone(timedelta(hours=9))
+from app.services.explain import template_reason
+from app.services.scoring import (
+    context_fit,
+    crowd_fit,
+    haversine_m,
+    purpose_match,
+    total_score,
+)
 
 # 목 전용 후보 하한. 실서비스는 constants.MIN_CANDIDATES(30)를 쓴다.
 # 상위 4곳 + 탐색 슬롯 1곳을 뽑으려면 최소 이만큼은 남아야 한다.
@@ -374,25 +367,23 @@ _CONGEST_BY_HOUR: list[str] = (
 )  # 24개
 
 
-def parse_visit_at(visit_at: str | None) -> datetime:
-    """ISO8601 → KST datetime. 파싱 실패해도 예외를 올리지 않는다."""
-    if not visit_at:
-        return datetime.now(KST)
-    try:
-        dt = datetime.fromisoformat(visit_at.replace("Z", "+00:00"))
-    except ValueError:
-        return datetime.now(KST)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=KST)
-    return dt.astimezone(KST)
-
-
 def weather_state_for(dt: datetime, settings: Settings) -> str:
     """MOCK_WEATHER_STATE가 있으면 그 값, 없으면 날짜로부터 결정적으로 고른다."""
     forced = settings.mock_weather_state
     if forced in WEATHER_STATES:
         return forced
     return WEATHER_STATES[dt.timetuple().tm_yday % len(WEATHER_STATES)]
+
+
+def weather_profile_for(dt: datetime, settings: Settings) -> tuple[str, dict[str, Any]]:
+    """(날씨 상태, 프로파일). W2의 live 경로도 실측 소스가 붙기 전까지 이걸 쓴다.
+
+    ⚠️ 임시다. W3(B3-3)에서 citydata `WEATHER_STTS` + 기상청 단기예보 병합으로
+    교체된다. 그전까지 live 응답의 날씨는 '결정적인 가짜'이며, 이 사실이
+    보이도록 mock 모듈에 남겨 둔다. live 코드로 옮기면 진짜처럼 보인다.
+    """
+    state = weather_state_for(dt, settings)
+    return state, _WEATHER_PROFILE[state]
 
 
 def build_context(
@@ -417,6 +408,8 @@ def build_context(
         congest_now=congest_now if nearest else None,
         congest_forecast_at_visit=congest_visit if nearest else None,
         age_mix_top="20대 31%" if nearest else None,
+        # 목은 언제나 가짜 소스다. 실서버에서 이 값이 보이면 키·적재가 빠진 것이다.
+        weather_source="mock",
     )
     wx = {
         "state": state,
@@ -454,61 +447,26 @@ def nearest_hotspot(lat: float, lng: float) -> str | None:
 # ============================================================================
 
 
-def _mock_context_fit(outdoor_exposure: float, wx: dict[str, Any]) -> float:
-    """목 전용 근사. 실제 비선형 로직은 W3(B3-1) services/context_fit.py가 소유한다.
-
-    형태만 맞춰 둔다 — 기온은 U자형, 미세먼지는 등급 임계값에서 꺾인다.
-    """
-    s, e = 1.0, outdoor_exposure
-    if wx["rain_prob"] > RAIN_TRIGGER:
-        s *= 1 - RAIN_COEF * e * min(wx["rain_prob"], 1.0)
-    if wx["pm25_grade"] >= 3:
-        s *= 1 - PM_COEF * e
-    if wx["feels_like"] > 31 or wx["feels_like"] < -5:
-        s *= 1 - EXTREME_TEMP_COEF * e
-    if wx["rain_prob"] < 0.2 and PLEASANT_RANGE[0] <= wx["feels_like"] <= PLEASANT_RANGE[1]:
-        s *= 1 + PLEASANT_BONUS * e
-    if wx["visit_hour"] >= wx["sunset_hour"]:
-        s *= 1 - AFTER_SUNSET_COEF * e
-    return max(0.0, min(s, CONTEXT_FIT_MAX))
-
-
-def _purpose_match(poi: dict[str, Any], purpose: str) -> float:
-    tags = poi.get("purpose_tags") or []
-    if not tags:
-        return 0.5                      # 정보 없음. 0으로 떨구지 않는다
-    if purpose == (tags[0] if tags else None):
-        return 0.95
-    if purpose in tags:
-        return 0.80
-    return 0.35
-
-
-def _crowd_fit(poi: dict[str, Any], purpose: str, wx: dict[str, Any]) -> float | None:
-    """핫스팟 밖이면 None. ROLE_B §6.5."""
-    if not poi.get("hotspot"):
-        return None
-    lvl = wx["congest_at_visit"]
-    if purpose in PURPOSE_QUIET:
-        return CROWD_FIT_QUIET[lvl]
-    if purpose in PURPOSE_LIVELY:
-        return CROWD_FIT_LIVELY[lvl]
-    return CROWD_FIT_NEUTRAL
-
-
 def _terms_for(
     poi: dict[str, Any], purpose: str, wx: dict[str, Any]
 ) -> dict[str, float | None]:
+    """목 점수 성분.
+
+    수식은 목 전용이 아니라 **live와 같은 함수**(services/scoring.py)를 쓴다.
+    목만 따로 계산하면 W4 통합에서 점수가 바뀌고, C가 보던 화면이 달라진다.
+    다른 것은 입력뿐이다 — segment/taste는 DB 대신 픽스처 값이 들어온다.
+    """
     base = poi.get("terms") or {}
+    in_hotspot = bool(poi.get("hotspot"))
     return {
         "segment_affinity": base.get("segment_affinity", 0.6),
-        "purpose_match": _purpose_match(poi, purpose),
+        "purpose_match": purpose_match(poi.get("purpose_tags"), purpose),
         "taste_similarity": base.get("taste_similarity", 0.6),
-        "context_fit": _mock_context_fit(poi.get("outdoor_exposure", 0.0), wx),
+        "context_fit": context_fit(poi.get("outdoor_exposure", 0.0), wx),
         "quality": poi.get("quality_score", 0.6),
         # ↓ 핫스팟 밖이면 None. 절대 0을 넣지 않는다 (ROLE_B §1.3)
-        "live_segment_match": base.get("live_segment_match") if poi.get("hotspot") else None,
-        "crowd_fit": _crowd_fit(poi, purpose, wx),
+        "live_segment_match": base.get("live_segment_match") if in_hotspot else None,
+        "crowd_fit": crowd_fit(wx["congest_at_visit"], purpose) if in_hotspot else None,
     }
 
 
@@ -517,25 +475,6 @@ def _terms_for(
 # ============================================================================
 
 _EXPLAIN_CYCLE = ("template", "cache", "llm")
-
-
-def _template_reason(poi: dict[str, Any], wx: dict[str, Any], req: RecommendRequest,
-                     terms: dict[str, float]) -> str:
-    """W4의 template_reason()과 같은 형태. 목 단계에서 미리 문장 길이를 보여준다."""
-    parts: list[str] = []
-    if wx["rain_prob"] > 0.5 and poi.get("outdoor_exposure", 0.0) < 0.3:
-        parts.append("비 예보가 있어 실내 공간 위주로 골랐습니다")
-    if wx["pm25_grade"] >= 3 and poi.get("outdoor_exposure", 0.0) < 0.3:
-        parts.append("미세먼지 나쁨 예보를 반영해 실내를 우선했습니다")
-    if terms.get("segment_affinity", 0) > 0.8:
-        parts.append("이 시간대에 또래 방문 비중이 높은 곳입니다")
-    if terms.get("purpose_match", 0) > 0.8:
-        parts.append(f"{req.purpose.value}에 적합하다는 후기가 많습니다")
-    if terms.get("crowd_fit", 1.0) < 0.4:
-        parts.append("다만 방문 시각에 다소 붐빌 수 있습니다")
-    if not parts:
-        return "요청하신 조건에 가장 근접한 장소입니다."
-    return ". ".join(parts) + "."
 
 
 def build_recommendation(
@@ -635,7 +574,7 @@ def build_recommendation(
                                   if "live_segment_match" in avail else None),
                     crowd=(round(avail["crowd_fit"], 3) if "crowd_fit" in avail else None),
                 ),
-                reason=_template_reason(p, wx, req, avail),
+                reason=template_reason(p, wx, req.purpose.value, avail),
                 evidence=[
                     Evidence(text=t, source="naver_blog")
                     for t in (p.get("evidence") or [])[:2]

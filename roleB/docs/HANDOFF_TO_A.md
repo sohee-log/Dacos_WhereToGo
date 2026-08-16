@@ -1,0 +1,311 @@
+# B → A 인수 메모 (W1~W6)
+
+> 작성 2026-08-10 · 보내는 사람 B(추천 엔진) · 받는 사람 A(데이터)
+> 스키마 원본은 [`db/migrations/`](../../db/migrations)다. 어휘 원본은
+> [`roleB/app/constants.py`](../app/constants.py)다. 이 문서와 어긋나면 **그쪽이 맞다.**
+
+---
+
+## 한 줄
+
+**엔진은 다 됐다. 지금 막힌 것은 데이터다.** 그리고 데이터가 비어도 **에러가 나지
+않는다** — 조용히 중립값으로 계산되고 순위만 밋밋해진다. 그래서 무엇이 비었을 때
+무엇이 죽는지를 이 문서에 적는다.
+
+---
+
+## 0. 가장 중요한 숫자 하나
+
+현재 시드로 추천을 돌리면 **가용 가중치의 약 57%가 모든 POI에서 같은 값(0.5)** 이다.
+
+| 항 | 가중치 | 지금 상태 |
+|---|---|---|
+| `segment_affinity` | 0.22 | ❌ **중립** — `poi.commercial_area_id`가 0/100 |
+| `purpose_match` | 0.22 | ✅ 동작 |
+| `taste_similarity` | 0.16 | ❌ **중립** — `poi.tag_vector` 없음 · `tag_embedding` 비어 있음 |
+| `context_fit` | 0.13 | ✅ 동작 |
+| `quality` | 0.09 | ❌ **중립** — `poi.quality_score` 없음 |
+| `live_segment_match` | 0.10 | ⬜ 관측 불가 — `poi.hotspot_code`가 0/100 (재정규화됨) |
+| `crowd_fit` | 0.08 | ⬜ 위와 같음 |
+
+즉 **지금 순위를 실제로 만드는 것은 `purpose_match` + `context_fit` + 거리뿐**이다.
+"당신 세그먼트가 이 시간대에 실제로 소비하는 곳"이라는 §1.3 차별점 1번은
+**아직 한 번도 계산된 적이 없다.**
+
+우선순위는 여기서 나온다 — **`commercial_area_id` → `tag_embedding` → `quality_score` → `hotspot_code`.**
+
+---
+
+## 1. 지금 시드 상태 (실측)
+
+`seeds/poi_seed.json` 100행 · `seeds/review_seed.json` 200청크를 그대로 읽은 결과다.
+
+### 잘 채워져 있는 것 ✅
+
+| 컬럼 | 상태 |
+|---|---|
+| `zone` | 100/100 · 5개 zone에 20씩 고르게 |
+| `outdoor_exposure` | 100/100 · 0.01~0.98로 스펙트럼이 넓다 |
+| `price_band` · `group_capacity` | 100/100 |
+| `attr_confidence` | 100/100 · 0.41~0.90 (하드필터 0.3을 전부 통과) |
+| `purpose_tags` · `atmosphere_tags` | 100/100 · **어휘가 정확히 고정 6종/10종과 일치** |
+
+어휘가 하나도 어긋나지 않았다. LLM 추출에서 가장 자주 깨지는 지점인데 깨끗하다.
+
+### 비어 있는 것 ❌
+
+| 컬럼 | 채움 | 비면 무슨 일이 |
+|---|---|---|
+| `poi.commercial_area_id` | **0/100** | `segment_affinity` 조인 자체가 불가능 → 가중치 0.22가 상수 |
+| `poi.tag_vector` | **없음** | 취향 유사도 0.16이 상수 |
+| `poi.quality_score` | **없음** | 품질 0.09가 상수 |
+| `poi.hotspot_code` | **0/100** | 실시간 항 0.18이 항상 관측 불가 → 배너의 혼잡·연령 줄이 통째로 안 뜬다 |
+| `poi.business_hours` | 0/100 | `is_open_at`이 TRUE를 반환한다(의도된 안전장치). 다만 **영업 종료한 곳이 후보에 남는다** |
+| `review_chunk.embedding` | **0/200** | 인용은 나가지만 **벡터 정렬이 안 된다** — "요청에 맞는 문장"이 아니라 "최신 비협찬 문장"이 뽑힌다 |
+
+> `sentiment_score`(0~1)와 `mention_count`는 채워져 있다. `quality_score`는
+> **이 둘로 계산하는 배치 산출값**이라 시드에 없는 게 맞다 — `compute_quality`를 돌리면 된다.
+
+---
+
+## 2. B가 읽는 테이블과 정확한 규약
+
+### 2-1. `poi` — 후보 백본
+
+B가 쓰는 컬럼과 규칙이다.
+
+| 컬럼 | 규칙 |
+|---|---|
+| `geom` | `GEOGRAPHY(POINT,4326)`. B가 `ST_DWithin`으로 미터 단위 반경 필터를 건다 |
+| `hotspot_code` | **1km 밖은 반드시 NULL.** 임의로 채우면 실시간 신호가 거짓이 된다 |
+| `attr_confidence` | `< 0.3`이면 후보에서 자동 제외. 별도 분기 코드가 없다 |
+| `outdoor_exposure` | ⚠️ **DDL 기본값이 0.0 = "완전 실내"다.** 안 채우면 모든 POI가 실내로 취급되어 **비가 와도 후보가 안 바뀐다** — 차별점 2번이 통째로 죽는다 |
+| `zone` | 거리 배율(`ZONE_BARRIER`)의 키. NULL이면 배율 1.0(중립)이라 "철로 반대편" 보정이 사라진다 |
+| `commercial_area_id` | `segment_affinity` 조인 키. **§0의 1순위** |
+| `price_band` | NULL이면 예산 필터를 통과시킨다(정보 없음을 부적합으로 바꾸지 않는다) |
+| `business_hours` | `{"mon":["10:00","22:00"], ...}`. 자정 넘김(`["18:00","02:00"]`)도 처리된다. NULL이면 항상 영업중으로 본다 |
+| `tag_vector` | `HALFVEC(1024)`. **`tag_embedding`과 반드시 같은 임베딩 공간**이어야 코사인이 의미를 갖는다 |
+
+### 2-2. `segment_affinity` — 조회 축을 정확히 맞춰야 한다
+
+B가 던지는 쿼리는 이렇다.
+
+```sql
+WHERE commercial_area_id = ANY(...) AND category_l2 = ANY(...)
+  AND gender = 'F' AND age_band = ANY(ARRAY[20,25])
+  AND dow_type = 0 AND hour_band = 4
+```
+
+| 축 | B의 규약 |
+|---|---|
+| `gender` | `'M'` / `'F'` |
+| `age_band` | **5세 단위**(20, 25, 30 …). 사용자는 "20대"로 답하지만 B가 `[20, 25]` 두 밴드를 함께 조회한다. **10년 단위 한 행으로 넣으면 25가 없어 절반이 빈다** |
+| `dow_type` | `0`=평일 · `1`=주말. **토·일이 주말** |
+| `hour_band` | `시 // 4` → 0~5. 즉 **밴드 0 = 00~03시, 밴드 4 = 16~19시, 밴드 5 = 20~23시** |
+| `affinity` | 0~1 정규화. `CHECK` 제약이 걸려 있으니 원본 매출을 그대로 넣으면 INSERT가 실패한다 |
+| `category_l2` | `poi.category_l2`와 **문자열이 정확히 같아야** 조인된다. 업종코드 매핑이 여기서 갈린다 |
+
+### 2-3. `hotspot_snapshot` — 15분 폴링 (A3-4)
+
+B는 `hotspot_latest` 뷰만 읽는다. **요청마다 citydata를 부르지 않는다.**
+
+| 컬럼 | 규약 |
+|---|---|
+| `congest_lvl` | 고정 어휘 4종만: `여유` `보통` `약간 붐빔` `붐빔`. 밖의 값은 버려진다 |
+| `age_rates` | `{"20": 31.2, ...}`. **퍼센트(31.2)와 비율(0.312) 둘 다 받는다** |
+| `weather` | **WEATHER_STTS 원본 키·문자열 그대로** 넣으면 된다. 파서가 `"-"`·`""`·`"1.5mm"`를 전부 받아낸다. 소문자로 정규화해 넣어도 읽힌다 |
+| `fcst` | 🔴 **여기가 핵심이다.** 아래 참조 |
+| `observed_at` | **40분** 이상 오래되면 stale로 잡힌다. 폴링이 죽으면 여기서 보인다 |
+
+🔴 **`fcst`를 반드시 채워달라.** W3부터 혼잡도는 실황이 아니라 `FCST_PPLTN`의
+**방문 예정 시각 슬롯**을 쓴다. 비면 실황으로 물러서고, 그러면 배너의
+*"지금 약간 붐빔 → 19시 붐빔 예상"* 이 사라진다. 이게 발표에서 가장 강한 카드다.
+
+```jsonc
+[
+  {"FCST_TIME": "2026-08-03 19:00", "FCST_CONGEST_LVL": "붐빔"},
+  {"FCST_TIME": "2026-08-03 21:00", "FCST_CONGEST_LVL": "약간 붐빔"}
+]
+```
+원본 배열을 그대로 넣으면 된다. B가 방문 시각에 가장 가까운 슬롯(±90분)을 고른다.
+
+### 2-4. `review_chunk` — RAG 인용
+
+| 컬럼 | 규약 |
+|---|---|
+| `text` | 최대 300자. **인용에 그대로 나가는 문장**이다. 요약문이 아니라 원문 발췌여야 한다 |
+| `embedding` | `HALFVEC(1024)`. 없어도 인용은 나가지만 벡터 정렬이 안 된다 |
+| `is_sponsored` | ⚠️ **정렬 첫 키다.** 협찬 글은 인용에서 뒤로 밀린다. 이 판정이 없으면 광고 문장이 대표 인용으로 뜬다 |
+| `written_at` | 벡터가 없을 때의 정렬 키(최신순) |
+
+현재 시드는 200청크 중 **19건이 협찬 판정**되어 있다. 판정 자체는 잘 돌고 있다.
+
+### 2-5. `query_vector_cache` — 72행
+
+목적 6 × 날씨 4 × 인원밴드 3. **온라인에서 임베딩하지 않기 위한 장치**다(§1.2).
+
+- `weather_state` 어휘: `맑음` `비` `미세먼지나쁨` `폭염한파`
+- `party_band`: 1=(1~2인) · 2=(3~4인) · 3=(5인 이상)
+- `query_text`는 `NOT NULL`이다. 임베딩의 원문을 그대로 넣으면 된다
+
+없으면 인용이 전부 비-벡터 경로(최신 비협찬)로 간다.
+
+### 2-6. `tag_embedding` — 16행 (신규 · `002_tag_embedding.sql`)
+
+**W4에 추가한 테이블이다.** 온보딩의 `taste_vector`를 만들려면 태그별 벡터가
+필요한데 담을 곳이 없었다. 임베딩 모델을 서버에 올릴 수 없어서(bge-m3 2GB, §1.2)
+A가 배치로 한 번 만들어 두면 온라인에서는 평균만 낸다 — `query_vector_cache`와 같은 발상이다.
+
+```sql
+INSERT INTO tag_embedding (tag, kind, embedding) VALUES
+  ('조용한', 'atmosphere', '[...]'::halfvec(1024)),
+  ('데이트', 'purpose',    '[...]'::halfvec(1024));
+```
+
+- 분위기 10 + 목적 6 = **16행.** `ATMOSPHERE_TAGS`·`PURPOSE_TAGS`와 정확히 같아야 한다
+- **`poi.tag_vector`와 같은 임베딩 공간**이어야 코사인이 의미를 갖는다
+- ⚠️ 공동 소유 영역이라 **적용 전에 3인 리뷰**가 필요하다 (추가만 하고 기존 테이블은 안 건드린다)
+
+### 2-7. `admin_dong` · `commercial_area` · `hotspot`
+
+| 테이블 | B의 사용처 | 비면 |
+|---|---|---|
+| `admin_dong` | 사용자 좌표 → `zone` 판정 (거리 배율의 기준점) | 배율 1.0, 체감거리 보정이 사라진다 |
+| `commercial_area` | `poi.commercial_area_id`의 참조 대상(FK) | POI 적재 시 FK 위반이 난다 |
+| `hotspot` | 사용자 최근접 지점 → 배너의 `hotspot` 이름 | 배너에 지역명이 안 뜬다 |
+
+`hotspot`은 **용산 해당 5~7개**만 넣으면 된다. 코드·이름은 `서울시 주요 121장소 목록.xlsx` 기준이다.
+
+---
+
+## 3. B가 A에게 이미 준 것
+
+### 3-1. LLM 실측 — 배치 일정 전제가 바뀌었다
+
+[`docs/LLM_QUOTA.md`](LLM_QUOTA.md)에 전문이 있다. 요약:
+
+| 항목 | 값 |
+|---|---|
+| POI당 | **1,038토큰 / 2.3초** (후기 9건 기준) |
+| T1 800 POI | **직렬 31분 · 동시 8이면 4분** |
+| 동시성 | 12까지 429 없음. **8로 시작**하고 429가 나면 절반으로 |
+| rate limit 헤더 | 없음 → 배치에 누적 카운터를 넣고 끊긴 지점을 기록해야 한다 |
+
+> **PLAN §8.2의 "야간 배치 2~3일" 전제는 폐기해도 된다.** 시간 제약이 사라졌으므로
+> T2 확장(1,500 POI, 동시 8이면 7분)이 기술적으로 열린다. 다만 병목이 옮겨간 것뿐이다 —
+> **진짜 병목은 네이버 블로그 수집**이고 PLAN §8.1이 여전히 최대 리스크다.
+
+🔴 **`response_format`을 `json_schema` + `strict: true`로 강제해야 한다.**
+실측한 실패 모드다.
+
+| 설정 | 결과 |
+|---|---|
+| `response_format` 없음 | JSON이 아닌 것을 뱉는다 (JS 코드 조각이 섞여 나왔다) |
+| `{"type":"json_object"}`만 | **스키마를 통째로 지어낸다** |
+| `json_schema` + `strict:true` | 8/8 필드 정상 |
+
+`strict: true`는 모든 필드가 `required`이고 `additionalProperties: false`여야 한다.
+안 지키면 게이트웨이가 400을 준다.
+
+### 3-2. 스키마와 개발 도구
+
+- `db/migrations/001_init.sql` · `002_tag_embedding.sql` — 초안은 B가 쓰되 **변경은 PR + 3인 리뷰**
+- `roleB/tools/load_seed_db.py` — **개발용**이다. 운영 적재는 A(`roleA/jobs/`)의 몫이라
+  시드에 있는 컬럼만 채운다. `--demo-vectors`로 가짜 벡터를 넣어 `<=>`·halfvec 경로를
+  켜볼 수 있다(의미는 없고 구조만 진짜다)
+- `is_open_at()` SQL 함수는 실 DB에서 4케이스 확인 완료 (NULL→TRUE / 영업중 / 종료 / 자정 넘김)
+
+---
+
+## 4. B가 A에게 부탁하는 것
+
+### 🔴 4-1. `poi.commercial_area_id` 공간조인 (§0의 1순위)
+
+이게 없으면 **개인화의 근거(가중치 0.22)가 통째로 상수**다. CF를 버리고 세그먼트
+통계를 택한 §1.1의 결정이 아직 한 번도 검증되지 않았다.
+
+### 🔴 4-2. `tag_embedding` 16행
+
+임베딩 16번이면 끝난다. 이것만으로 취향 항(0.16)이 살아난다.
+
+### 🟠 4-3. `hotspot_snapshot.fcst`
+
+배너의 *"19시 붐빔 예상"* 이 여기서 나온다.
+
+### 🟡 4-4. `BASELINE_AGE_RATE` 실측치
+
+`app/constants.py`의 이 값은 **내가 넣은 잠정치**다.
+
+```python
+BASELINE_AGE_RATE = {10: 0.10, 20: 0.22, 30: 0.20, 40: 0.18, 50: 0.16, 60: 0.14}
+```
+
+`live_segment_match`의 분모라서(= "서울 전체 평균 대비 또래가 얼마나 많은가")
+틀리면 실시간 세그먼트 항이 체계적으로 치우친다. **A가 citydata를 15분마다
+폴링하니 며칠이면 실측 평균이 나온다.** 나오면 알려달라 — 상수만 갈면 된다.
+
+### 🟡 4-5. 어휘를 늘리지 말 것
+
+`purpose_tags`·`atmosphere_tags`·`congest_lvl`·`weather_state`는 A·B·C가 공유한다.
+하나만 늘리면 **조회에서 조용히 빠진다**(에러가 아니라 매칭 실패다).
+늘려야 하면 3인 합의 + `openapi.yaml` 동시 수정이다.
+
+---
+
+## 5. 확인하는 법
+
+A가 적재한 뒤 이 쿼리들로 스스로 점검할 수 있다.
+
+```sql
+-- 조인 키가 얼마나 채워졌나 (§0의 1순위)
+SELECT count(*) AS total,
+       count(commercial_area_id) AS with_area,
+       count(hotspot_code)       AS in_hotspot,
+       count(quality_score)      AS with_quality,
+       count(tag_vector)         AS with_vector
+FROM poi;
+
+-- 어휘가 새지 않았나 (결과가 0행이어야 정상)
+SELECT DISTINCT unnest(purpose_tags) AS tag FROM poi
+EXCEPT SELECT unnest(ARRAY['데이트','친구모임','혼자','가족','작업','회식']);
+
+-- 폴링이 살아 있나 (40분 넘으면 stale)
+SELECT hotspot_code, observed_at, now() - observed_at AS age,
+       jsonb_array_length(fcst) AS fcst_slots
+FROM hotspot_latest;
+
+-- 캐시가 다 찼나
+SELECT count(*) FROM query_vector_cache;   -- 72
+SELECT kind, count(*) FROM tag_embedding GROUP BY kind;  -- atmosphere 10 / purpose 6
+```
+
+엔진 쪽 통합 테스트도 그대로 쓸 수 있다. DB만 있으면 된다.
+
+```powershell
+cd roleB
+$env:TEST_DATABASE_URL = "postgresql://..."
+pytest tests/test_live_db.py -v
+```
+
+`hotspot_code`가 전부 NULL이거나 전부 채워져 있으면 일부 테스트가 skip된다 —
+**그 자체가 "한쪽 경로를 검증하지 못했다"는 신호**다.
+
+---
+
+## 6. 한 장 체크리스트
+
+- [ ] `commercial_area` 폴리곤 적재 → `poi.commercial_area_id` 공간조인 🔴
+- [ ] `tag_embedding` 16행 (분위기 10 + 목적 6, `poi.tag_vector`와 같은 공간) 🔴
+- [ ] `segment_affinity` — 5세 단위 age_band · `hour_band = 시//4` · affinity 0~1 정규화
+- [ ] `compute_quality` → `poi.quality_score`
+- [ ] `poi.hotspot_code` 매핑 (**1km 밖은 NULL 유지**)
+- [ ] `hotspot_snapshot.fcst` + `weather` 원본 그대로
+- [ ] `review_chunk.embedding` (bge-m3, halfvec)
+- [ ] `query_vector_cache` 72행
+- [ ] `admin_dong.zone` (사용자 zone 판정)
+- [ ] `poi.business_hours` (없어도 돌지만 영업 종료 매장이 후보에 남는다)
+- [ ] `BASELINE_AGE_RATE` 실측치 회신
+- [ ] LLM 배치는 `json_schema` + `strict: true` · 동시성 8 시작 · 누적 카운터
+
+막히면 `db/migrations/`와 `app/constants.py`를 먼저 보고, 그래도 다르면 B에게.
+스키마 변경은 PR + 3인 리뷰다.
