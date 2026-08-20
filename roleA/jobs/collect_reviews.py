@@ -109,6 +109,45 @@ LOCATION_TERMS = {
 }
 
 
+def contains_poi_name(
+    text,
+    poi_name,
+):
+    """
+    POI명이 독립된 이름으로 등장하는지 확인한다.
+
+    - '시칠리' → '시칠리아'는 제외
+    - '넘' → '넘예뻐'는 제외
+    - '한강로주꾸미' → '한강로 주꾸미'는 허용
+    """
+
+    text = clean_text(text).lower()
+    poi_name = clean_text(poi_name).lower()
+
+    # 상호명에서 한글/영문/숫자만 추출
+    chars = re.findall(
+        r"[0-9a-z가-힣]",
+        poi_name,
+    )
+
+    if not chars:
+        return False
+
+    # 글자 사이의 공백/특수문자는 허용
+    name_pattern = r"[\s\W_]*".join(re.escape(char) for char in chars)
+
+    pattern = rf"(?<![0-9a-z가-힣])" rf"{name_pattern}" rf"(?![0-9a-z가-힣])"
+
+    return (
+        re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+        is not None
+    )
+
+
 def is_relevant_item(
     item,
     poi_name,
@@ -140,14 +179,23 @@ def is_relevant_item(
 
     score = 0
 
-    if poi_norm in title:
+    title_name_match = contains_poi_name(
+        item.get("title", ""),
+        poi_name,
+    )
+
+    description_name_match = contains_poi_name(
+        item.get("description", ""),
+        poi_name,
+    )
+
+    if title_name_match:
         score += 3
 
-    elif poi_norm in description:
+    elif description_name_match:
         score += 1
 
     else:
-        # 이름 자체가 어디에도 없으면 즉시 제외
         return False
 
     # ------------------------------------------
@@ -275,16 +323,17 @@ def collect_one_poi(
     dong,
 ):
     """
-    한 POI에 대해 4개 쿼리 실행 후,
-    검색 결과의 title/description에 실제 POI명이
-    포함된 결과만 유지한다.
+    한 POI에 대해 4개 쿼리를 실행한다.
 
-    이후 URL 기준 중복 제거 → 최대 10개 유지.
+    1. strict relevance filter 적용
+    2. 쿼리별 후보를 따로 보관
+    3. round-robin 방식으로 쿼리별 결과를 골고루 선택
+    4. URL 중복 제거
+    5. 최종 최대 10건 유지
     """
 
-    merged = {}
-
     query_totals = {}
+    query_results = []
 
     mention_count = 0
 
@@ -304,7 +353,8 @@ def collect_one_poi(
 
         query_totals[query] = total
 
-        # 첫 번째 "{상호명}" 검색의 total
+        # 프로젝트 규칙:
+        # 첫 번째 "{name}" 쿼리의 total을 mention_count로 사용
         if query_index == 0:
             mention_count = total
 
@@ -315,12 +365,9 @@ def collect_one_poi(
 
         total_items += len(items)
 
-        for item in items:
+        current_query_results = []
 
-            # ==================================
-            # 실제 POI 이름이 검색 결과에
-            # 등장하는 경우만 사용
-            # ==================================
+        for item in items:
 
             if not is_relevant_item(
                 item,
@@ -341,51 +388,88 @@ def collect_one_poi(
             if not link:
                 continue
 
-            # 동일 URL 중복 제거
-            if link in merged:
-                continue
+            current_query_results.append(
+                {
+                    "title": clean_text(
+                        item.get(
+                            "title",
+                            "",
+                        )
+                    ),
+                    "link": link,
+                    "description": clean_text(
+                        item.get(
+                            "description",
+                            "",
+                        )
+                    ),
+                    "bloggername": clean_text(
+                        item.get(
+                            "bloggername",
+                            "",
+                        )
+                    ),
+                    "bloggerlink": str(
+                        item.get(
+                            "bloggerlink",
+                            "",
+                        )
+                    ).strip(),
+                    "postdate": str(
+                        item.get(
+                            "postdate",
+                            "",
+                        )
+                    ).strip(),
+                    "matched_query": query,
+                }
+            )
 
-            merged[link] = {
-                "title": clean_text(
-                    item.get(
-                        "title",
-                        "",
-                    )
-                ),
-                "link": link,
-                "description": clean_text(
-                    item.get(
-                        "description",
-                        "",
-                    )
-                ),
-                "bloggername": clean_text(
-                    item.get(
-                        "bloggername",
-                        "",
-                    )
-                ),
-                "bloggerlink": str(
-                    item.get(
-                        "bloggerlink",
-                        "",
-                    )
-                ).strip(),
-                "postdate": str(
-                    item.get(
-                        "postdate",
-                        "",
-                    )
-                ).strip(),
-                "matched_query": query,
-            }
+        query_results.append(current_query_results)
 
         time.sleep(0.05)
 
-    results = list(merged.values())[:MAX_RESULTS_PER_POI]
+    # ==========================================
+    # 4개 쿼리 결과를 round-robin으로 병합
+    # ==========================================
 
-    # QC용
-    print(f"  검색 결과 {total_items}건 중 " f"관련 후보 {relevant_items}건")
+    results = []
+    seen_links = set()
+
+    max_query_length = max(
+        (len(items) for items in query_results),
+        default=0,
+    )
+
+    for rank in range(max_query_length):
+
+        for items in query_results:
+
+            if rank >= len(items):
+                continue
+
+            item = items[rank]
+
+            link = item["link"]
+
+            if link in seen_links:
+                continue
+
+            seen_links.add(link)
+
+            results.append(item)
+
+            if len(results) >= MAX_RESULTS_PER_POI:
+                break
+
+        if len(results) >= MAX_RESULTS_PER_POI:
+            break
+
+    print(
+        f"  검색 결과 {total_items}건 중 "
+        f"관련 후보 {relevant_items}건 "
+        f"→ 최종 {len(results)}건"
+    )
 
     return {
         "poi_id": str(poi_id),
