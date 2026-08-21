@@ -1,0 +1,38 @@
+name: Poll Seoul Citydata
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+
+  workflow_dispatch:
+
+concurrency:
+  group: poll-seoul-citydata
+  cancel-in-progress: false
+
+jobs:
+  poll-citydata:
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests python-dotenv "psycopg[binary]"
+
+      - name: Poll Seoul citydata
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
+        run: |
+          python -m roleA.jobs.poll_citydata
