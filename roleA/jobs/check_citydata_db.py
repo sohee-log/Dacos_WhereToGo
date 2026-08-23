@@ -59,6 +59,24 @@ def main():
                     table,
                 )
 
+            # 최신 도시데이터 확인
+            print("\n=== hotspot_latest 최신 데이터 ===")
+
+            cur.execute("""
+                SELECT
+                    hotspot_code,
+                    hotspot_name,
+                    observed_at,
+                    congest_lvl,
+                    ppltn_min,
+                    ppltn_max
+                FROM hotspot_latest
+                ORDER BY hotspot_code
+                """)
+
+            for row in cur.fetchall():
+                print(row)
+
     finally:
         conn.close()
 
