@@ -37,6 +37,15 @@ log = logging.getLogger("wheretogo.llm")
 
 CHAT_PATH = "/chat/completions/"        # 끝 슬래시 필수 (docs/LLM_QUOTA.md)
 
+# 🔴 **User-Agent를 반드시 보낸다.** 게이트웨이 앞단의 Cloudflare가 urllib의 기본
+# UA(`Python-urllib/3.x`)를 차단한다 — 키가 맞아도 `403 error code: 1010`이다.
+# 이 모듈은 어떤 실패도 None으로 삼키므로, 빠뜨리면 **호출이 한 번도 안 나가면서
+# 응답은 200에 `explain_mode: "template"`** 이 된다. 에러가 아니라 조용한 전멸이다.
+#
+# B1-5 실측(`tools/llm_quota_probe.py`)이 이걸 못 잡은 이유는 그 도구가 httpx를
+# 쓰기 때문이다. httpx는 자기 UA를 붙인다. **재는 경로와 도는 경로가 달랐다.**
+USER_AGENT = "wheretogo-api/0.1 (+https://github.com/sohee-log/Dacos_WhereToGo)"
+
 
 class _DailyCounter:
     """오늘 몇 번 불렀는가. 날짜가 바뀌면 저절로 리셋된다."""
@@ -126,6 +135,7 @@ def chat_json(
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {settings.llm_api_key}",
+            "User-Agent": USER_AGENT,
         },
         method="POST",
     )

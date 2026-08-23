@@ -115,6 +115,28 @@ def test_party_size_hard_filter_applies(executor, query):
             assert row["group_capacity"] >= 20 or row["attr_confidence"] is not None
 
 
+def test_null_group_capacity_is_not_dropped(executor, query):
+    """인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다.
+
+    NULL을 그대로 비교하면 3값 논리로 WHERE가 NULL이 되어, 그 POI가 인원 수와
+    무관하게 **항상** 후보에서 빠진다. 에러도 경고도 없이 사라지는 종류다.
+    실제로 A의 `--clear-seed-mock`이 이 컬럼을 NULL로 되돌린다.
+    """
+    null_rows = executor(
+        "SELECT count(*) AS n FROM poi WHERE group_capacity IS NULL", {}
+    )[0]["n"]
+    if not null_rows:
+        pytest.skip("NULL group_capacity 행이 없다 — 이 경로를 확인할 수 없다")
+
+    # 실제 후보 SQL을 그대로 태운다. 조건을 여기 다시 적으면 코드가 바뀔 때 어긋난다.
+    big = retrieval.RetrievalQuery(**{**query.__dict__, "party_size": 20})
+    params = retrieval._params(big, 100_000.0, 0.0)
+    rows = executor(retrieval.CANDIDATE_SQL, params)
+    assert any(r["group_capacity"] is None for r in rows), (
+        "인원 수를 모르는 POI가 하드필터에서 통째로 빠졌다"
+    )
+
+
 def test_rain_hard_cut_excludes_exposed_places(executor, query):
     rainy = retrieval.RetrievalQuery(**{**query.__dict__, "rain_prob": 0.9})
     result = retrieval.retrieve(executor, rainy)
@@ -215,12 +237,38 @@ def test_context_reports_its_weather_source(settings, executor, soon):
 
 
 def test_citydata_weather_is_parsed_from_snapshot(settings, executor, soon):
+    """스냅샷 원본과 대조한다. **고정값을 박지 않는다.**
+
+    예전엔 개발 시드 값(31.7 / 등급2 / 19:42)을 그대로 기대했다. 그러다 실 DB를
+    붙이니 전부 틀렸다 — 시드에만 있던 `SENSIBLE_TEMP`가 실제 응답엔 없다.
+    **테스트가 검증해야 하는 것은 값이 아니라 "행에 있는 것을 그대로 읽는가"** 다.
+    """
+    from app.services.live_signals import as_float, parse_citydata_weather
     from app.services.pipeline import resolve_context
 
-    ctx = resolve_context(executor, settings, *ITAEWON, soon).ctx
-    assert ctx.feels_like == pytest.approx(31.7)      # SENSIBLE_TEMP 우선
-    assert ctx.pm25_grade == 2                        # PM25 23 → 보통
-    assert ctx.sunset == "19:42"                      # 분까지 보존한다
+    resolved = resolve_context(executor, settings, *ITAEWON, soon)
+    ctx = resolved.ctx
+    row = executor(
+        "SELECT weather FROM hotspot_latest WHERE hotspot_code = %(code)s",
+        {"code": resolved.nearest_code},
+    )
+    if not row or not row[0]["weather"]:
+        pytest.skip("가장 가까운 지점의 스냅샷에 WEATHER_STTS가 없다")
+
+    raw = row[0]["weather"]
+    parsed = parse_citydata_weather(raw)
+    assert parsed is not None, "실 스냅샷의 WEATHER_STTS 파싱이 실패했다"
+
+    assert ctx.pm25_grade == parsed["pm25_grade"]
+    assert ctx.sunset == parsed["sunset"]             # 분까지 보존한다
+    assert ctx.sunset == str(raw.get("SUNSET")).strip()
+
+    # 실황에 SENSIBLE_TEMP가 있으면 그게 우선, 없으면 습도·풍속으로 만든 체감온도다.
+    # 어느 쪽이든 **기온보다 낮아질 이유는 없다** (여름 기준). 여기가 §6.3의 입력이다.
+    temp = as_float(raw.get("TEMP"))
+    assert ctx.feels_like == pytest.approx(parsed["feels_like"])
+    if raw.get("SENSIBLE_TEMP") is None and temp is not None and temp >= 27:
+        assert ctx.feels_like > temp, "습도·풍속이 체감온도에 반영되지 않았다"
 
 
 def test_congest_forecast_uses_visit_time_not_now(settings, executor, soon):
@@ -233,18 +281,53 @@ def test_congest_forecast_uses_visit_time_not_now(settings, executor, soon):
 
 
 def test_missing_kma_key_falls_back_to_citydata(settings, executor, later):
-    """키가 없어도 예보 시각 요청이 500이 되지 않는다. 실황으로 물러선다."""
+    """키가 없어도 예보 시각 요청이 500이 되지 않는다.
+
+    폴백 순서가 바뀌었다 — 실황이 아니라 **citydata 24시간 예보가 먼저**다.
+    `KMA_SERVICE_KEY`가 없는 동안 *"5시간 뒤에 갈 건데"* 에 지금 날씨로 답하는 것은
+    마지막 수단이어야 한다. 스냅샷의 `FCST24HOURS`는 이미 적재돼 있다.
+    """
     from app.services.pipeline import resolve_context
 
-    ctx = resolve_context(executor, settings, *ITAEWON, later).ctx
-    assert ctx.weather_source in {"citydata", "kma", "kma+citydata"}
+    resolved = resolve_context(executor, settings, *ITAEWON, later)
+    ctx = resolved.ctx
+    assert ctx.weather_source in {"citydata", "citydata_fcst", "kma", "kma+citydata"}
+
+    if settings.kma_service_key:
+        return                                  # 키가 있으면 기상청이 이긴다
+
+    near = resolved.signals.get(resolved.nearest_code or "")
+    if near and near.weather_at_visit:
+        assert ctx.weather_source == "citydata_fcst", (
+            "예보 슬롯이 있는데도 실황으로 물러섰다"
+        )
+        # 예보의 강수는 확률이다. 실황(0/1)과 의미가 다르다.
+        assert ctx.rain_prob == pytest.approx(near.weather_at_visit["rain_prob"])
+        # 대기질과 일몰은 예보에 없다 — 실황에서 채워져야 한다.
+        assert ctx.pm25_grade is not None
+        assert ctx.sunset
 
 
 def test_context_outside_hotspot_has_no_live_fields(settings, executor, soon):
-    """지점에서 먼 좌표. 혼잡·연령 문구를 지어내지 않는다."""
+    """지점에서 먼 좌표. 혼잡·연령 문구를 지어내지 않는다.
+
+    좌표를 **DB에서 찾는다.** 예전엔 이촌 한강변을 하드코딩했는데, A가 용산
+    11개 지점을 실제로 적재하니 그 점이 국립중앙박물관 반경 1km 안이 됐다.
+    지점 배치가 바뀔 때마다 테스트가 거짓으로 깨진다.
+    """
     from app.services.pipeline import resolve_context
 
-    far = (37.5175, 126.9723)          # 이촌 한강변 — 데모 지점 반경 밖
+    # 전 지점에서 1km 밖인 POI 하나를 빌려 쓴다. `hotspot_code IS NULL`이
+    # A의 매핑 규칙(1km 밖은 NULL)과 같은 기준이다.
+    rows = executor(
+        "SELECT ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lng"
+        " FROM poi WHERE hotspot_code IS NULL LIMIT 1",
+        {},
+    )
+    if not rows:
+        pytest.skip("지점 반경 밖 POI가 없다 — 이 경로를 검증할 수 없다")
+
+    far = (rows[0]["lat"], rows[0]["lng"])
     ctx = resolve_context(executor, settings, *far, soon).ctx
     assert ctx.hotspot is None
     assert ctx.congest_now is None
@@ -291,6 +374,15 @@ def test_recommendation_is_logged_with_unshown_candidates(settings, db, executor
     assert row, "log_id가 실제 행을 가리키지 않는다"
     entry = row[0]
     cands = entry["candidates"]
+
+    if res.radius_expanded or res.low_confidence:
+        # 최근접 폴백은 후보가 3건뿐이라 '노출 안 된 후보'가 존재할 수 없다.
+        # 실패가 아니라 **A의 속성 추출(attr_confidence)이 아직**이라는 신호다.
+        assert cands, "폴백 경로에서도 후보는 남아야 한다"
+        assert all("terms" in c and "shown" in c for c in cands)
+        pytest.skip(
+            "최근접 폴백 상태다 (attr_confidence 전 건 0) — negative sample이 나올 수 없다"
+        )
 
     assert len(cands) > len(res.results), "상위 20건이 아니라 노출분만 남았다"
     assert any(c["shown"] for c in cands)

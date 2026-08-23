@@ -73,7 +73,11 @@ FROM poi p
 {_TASTE_JOIN}
 WHERE ST_DWithin(p.geom, {_POINT}, %(radius_m)s)
   AND is_open_at(p.business_hours, %(visit_at)s)
-  AND p.group_capacity >= %(party_size)s
+  -- 인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다. NULL을 그대로
+  -- 비교하면 3값 논리로 NULL이 되어 그 POI가 조건과 무관하게 항상 빠진다.
+  -- 속성 미확보는 배제가 아니라 순위 강등으로 다룬다 (ROLE_B §1.3) —
+  -- 실제로 attr_confidence가 그 역할을 하고, price_band도 같은 규칙이다.
+  AND (p.group_capacity IS NULL OR p.group_capacity >= %(party_size)s)
   AND (%(rain_prob)s < 0.6 OR p.outdoor_exposure <= 0.7)
   AND (%(pm25_grade)s < 4 OR p.outdoor_exposure <= 0.5)
   AND (p.price_band IS NULL OR p.price_band <= %(budget_band)s)
@@ -181,6 +185,10 @@ class RetrievalQuery:
     limit: int = 500
     # 취향 유사도를 DB에서 계산하기 위한 키. 프로필이 없으면 taste_sim이 NULL이 된다.
     user_id: str = ""
+    # 속성 신뢰도 하한. 기본값은 설계값이고, 호출부(pipeline)가 설정값으로 덮는다.
+    # A의 속성 추출 전에는 전 건 0이라 이 값을 낮춰야 후보가 남는다 (config.py 참고).
+    conf_min: float = float(ATTR_CONFIDENCE_MIN)
+    conf_relaxed: float = float(ATTR_CONFIDENCE_RELAXED)
 
 
 @dataclass
@@ -212,7 +220,7 @@ def _params(q: RetrievalQuery, radius_m: float, conf_min: float) -> dict[str, An
 def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
     """후보를 만든다. 어떤 경로로도 빈 리스트를 반환하지 않는다."""
     radius = float(DEFAULT_RADIUS_M)
-    rows = executor(CANDIDATE_SQL, _params(q, radius, ATTR_CONFIDENCE_MIN))
+    rows = executor(CANDIDATE_SQL, _params(q, radius, q.conf_min))
     result = RetrievalResult(candidates=rows, radius_m=radius)
 
     # ① 반경 확대 — 후보가 얇으면 순위가 의미를 잃는다
@@ -221,7 +229,7 @@ def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
             break
         radius *= RADIUS_EXPAND_FACTOR
         result.candidates = executor(
-            CANDIDATE_SQL, _params(q, radius, ATTR_CONFIDENCE_MIN)
+            CANDIDATE_SQL, _params(q, radius, q.conf_min)
         )
         result.radius_m = radius
         result.radius_expanded = True
@@ -231,7 +239,7 @@ def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
         return result
 
     # ② 신뢰도 완화 — 속성이 얕은 POI까지 받는다. 응답에 low_confidence로 표시된다
-    relaxed = executor(CANDIDATE_SQL, _params(q, radius, ATTR_CONFIDENCE_RELAXED))
+    relaxed = executor(CANDIDATE_SQL, _params(q, radius, q.conf_relaxed))
     if relaxed:
         result.candidates = relaxed
         result.low_confidence = True

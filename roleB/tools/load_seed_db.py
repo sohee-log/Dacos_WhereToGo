@@ -73,29 +73,55 @@ DEMO_HOTSPOTS = [
 
 # WEATHER_STTS 형태 그대로. 값이 전부 문자열인 것이 핵심이다 —
 # 파서가 실제 응답과 같은 모양을 상대하게 해야 한다.
+# WEATHER_STTS 실측 형태(V8.5). `SENSIBLE_TEMP`는 **응답에 없다** — 체감온도는
+# HUMIDITY·WIND_SPD로 만든다. 개발 DB가 실제와 다른 필드를 쓰면 실황 경로가
+# 여기서만 통과하고 운영에서 갈린다.
 DEMO_WEATHER = {
+    "WEATHER_TIME": "2026-08-23 18:20",
     "TEMP": "28.4",
-    "SENSIBLE_TEMP": "31.7",
+    "HUMIDITY": "68",
+    "WIND_SPD": "1.4",
     "PRECPT_TYPE": "없음",
     "PRECIPITATION": "-",
     "PM10": "42",
     "PM25": "23",
+    "SUNRISE": "05:43",
     "SUNSET": "19:42",
+    "AIR_IDX": "보통",
     "SKY_STTS": "구름많음",
 }
 
-# FCST_PPLTN 형태. 2시간 간격 12시간. 실행 시각 기준으로 만든다.
-DEMO_FCST_LEVELS = ["보통", "약간 붐빔", "붐빔", "약간 붐빔", "보통", "여유"]
+# FCST_PPLTN 형태. 실측은 1시간 간격 12슬롯이다. 실행 시각 기준으로 만든다.
+DEMO_FCST_LEVELS = ["보통", "약간 붐빔", "붐빔", "붐빔", "약간 붐빔", "보통",
+                    "보통", "여유", "여유", "여유", "여유", "여유"]
 
 
-def _demo_fcst(now: datetime) -> list[dict[str, str]]:
-    return [
+def _demo_fcst(now: datetime) -> dict[str, list[dict[str, str]]]:
+    """A의 `poll_citydata.py`가 넣는 형태 그대로.
+
+    ⚠️ 배열이 아니라 **객체**다. 인구예측과 날씨예측을 한 컬럼에 함께 담는다.
+    개발 DB가 배열로 남아 있으면 `forecast_weather_at`이 여기서만 비어
+    "기상청 키가 없을 때의 예보"가 개발에서 검증되지 않는다.
+    """
+    population = [
         {
-            "FCST_TIME": (now + timedelta(hours=2 * i)).strftime("%Y-%m-%d %H:00"),
+            "FCST_TIME": (now + timedelta(hours=i)).strftime("%Y-%m-%d %H:00"),
             "FCST_CONGEST_LVL": level,
         }
         for i, level in enumerate(DEMO_FCST_LEVELS)
     ]
+    weather = [
+        {
+            "FCST_DT": (now + timedelta(hours=i)).strftime("%Y%m%d%H00"),
+            "TEMP": f"{28 - i // 3}",
+            "PRECIPITATION": "-",
+            "PRECPT_TYPE": "없음",
+            "RAIN_CHANCE": "20",
+            "SKY_STTS": "구름많음",
+        }
+        for i in range(len(DEMO_FCST_LEVELS))
+    ]
+    return {"population": population, "weather": weather}
 
 
 # ============================================================================

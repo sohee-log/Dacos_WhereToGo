@@ -17,7 +17,7 @@ A가 `roleA/`에서 실제 배치를 짤 때 이 호출 형식(특히 response_f
 ------
     export LLM_API_KEY=...
     export LLM_BASE_URL=https://factchat-cloud.mindlogic.ai/v1/gateway
-    export LLM_MODEL=gpt-5.4-nano
+    export LLM_MODEL=gemini-3.5-flash-lite
 
     python tools/extract_cost_probe.py --reviews 8 --repeat 2 --confirm
 """
@@ -36,6 +36,11 @@ try:
 except ImportError:  # pragma: no cover
     print("httpx가 필요하다: pip install -r requirements-dev.txt", file=sys.stderr)
     raise SystemExit(1)
+
+# 앱이 실제로 보내는 UA를 그대로 쓴다. 상수를 복사해 두면 갈린다 —
+# 갈린 상태로 W1 실측이 통과했고, prod에서만 403이었다 (docs/LLM_QUOTA.md §0-1).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.services.llm import USER_AGENT  # noqa: E402
 
 # 고정 어휘는 app/constants.py와 같아야 한다. 여기서 늘리면 A의 추출 결과가 스키마를 벗어난다.
 PURPOSE_TAGS = ["데이트", "친구모임", "혼자", "가족", "작업", "회식"]
@@ -119,7 +124,10 @@ def extract_once(
     started = time.perf_counter()
     r = client.post(
         f"{base_url.rstrip('/')}/chat/completions/",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": f"Bearer {api_key}",
+                 # 앱과 **같은 UA로 잰다.** 이게 다르면 재는 경로와 도는 경로가
+                 # 갈린다 — 실제로 한 번 갈렸다 (docs/LLM_QUOTA.md §0-1).
+                 "User-Agent": USER_AGENT},
         json={
             "model": model,
             "messages": [{"role": "user", "content": prompt}],

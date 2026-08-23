@@ -136,13 +136,95 @@ python -m tools.warm_cache --url https://dacos-wheretogo.onrender.com
 워밍하면서 스모크 체크도 같이 한다. 200인가 · 빈 결과가 없는가 · 인용이 붙는가.
 인용이 없는 시나리오가 나오면 그 지역 POI에 `review_chunk`가 없다는 뜻이므로 A에게 알린다.
 
+---
+
+## 실데이터 전환 준비 (A의 W2 적재 이후)
+
+A가 Supabase에 POI 6,644건을 넣었다. **그런데 지금 `MOCK_MODE=false`로 내리면
+추천이 "가까운 곳 3건"으로 주저앉는다.** 에러가 아니라 200이 나가면서
+순위만 사라지는 종류라 눈으로는 안 보인다.
+
+```
+기본 필터 (attr_confidence >= 0.30)  → 0건
+반경 1.6배 두 번 확대                 → 0건
+조건 완화 (0.15)                      → 0건
+최근접 폴백 (하드필터 해제, 거리순)   → 3건   ← 여기까지 밀린다
+```
+
+원인은 A의 잘못이 아니다. 속성 추출이 A3-2/A4-1이라 `attr_confidence`가 아직
+전 건 0인 게 **계약대로**다. 순서를 맞추면 되는 일이라 두 가지를 준비했다.
+
+### 1. 지금 켜면 무엇이 죽는지 먼저 본다
+
+```powershell
+$env:DATABASE_URL = "postgresql://..."
+python -m tools.check_data_readiness
+```
+
+B가 읽는 입력을 전부 훑어서 두 가지를 답한다.
+
+| | |
+|---|---|
+| 후보가 남는가 | 하나라도 0이면 최근접 폴백으로 주저앉는다 (종료 코드 1) |
+| **순위를 실제로 움직이는 가중치가 몇 %인가** | 항이 중립으로 쉬면 기여가 '적은' 게 아니라 **정확히 0**이다 |
+
+두 번째가 이 도구의 핵심이다. "적재 끝났다"와 "추천이 의미 있다" 사이의
+거리를 숫자로 만든다. 전환일에 이걸 먼저 돌리고 결정한다.
+
+### 2. 임계값을 환경변수로 뺐다
+
+```
+ATTR_CONFIDENCE_MIN=0.30       # 기본값. 평상시 건드리지 않는다
+ATTR_CONFIDENCE_RELAXED=0.15
+```
+
+화면을 먼저 확인해야 하면 Render 환경변수만 내려서 전환하고, A의 추출이
+끝나면 되돌린다. **코드 수정과 재배포가 필요 없다.** 완화한 채로 두면 속성
+없는 POI가 그대로 추천에 섞이므로(응답의 `low_confidence`로 드러난다)
+되돌리는 것을 잊지 않는 게 먼저다.
+
+### 3. 목과 실 경로가 갈리던 곳 두 군데를 맞췄다
+
+A의 시드를 읽으면서 드러난 것이다. 둘 다 **에러 없이 순위만 바뀌는** 종류라
+통합할 때 찾기 어렵다.
+
+| | 전 | 후 |
+|---|---|---|
+| `quality_score`가 없을 때 | 목은 0.6, 실서버는 중립 0.5 — 같은 POI의 순위가 갈렸다 | 양쪽 다 중립 0.5 (`quality_term` 공용) |
+| `hotspot_code`가 전 건 NULL일 때 | 목 응답에 `live_segment`/`crowd` 키가 **한 건도** 안 생겼다 | 지점 반경 규칙으로 유도해 **한 응답에 두 경우를 섞는다** |
+
+두 번째는 C에게 직접 영향이 있다. 시드를 읽는 순간 "실시간 신호 있는 카드"가
+사라져서, C가 그 배지와 `undefined` 처리(§3.3)를 화면에서 확인할 수 없었다.
+A가 `hotspot_code`를 채우면 유도값은 쓰이지 않는다.
+
+### 4. 하드필터의 NULL 안전성
+
+`group_capacity >= :party_size`에 NULL이 들어오면 3값 논리로 WHERE가 NULL이
+되어 **그 POI가 인원 수와 무관하게 항상 빠진다.** 에러도 경고도 없다.
+A의 `--clear-seed-mock`이 실제로 이 컬럼을 NULL로 되돌리므로 가상의 걱정이 아니다.
+
+인원 수를 **모르는** 것과 인원이 **안 되는** 것은 다르다. 속성 미확보는
+배제가 아니라 순위 강등으로 다룬다(§1.3) — 그 역할은 `attr_confidence`가 한다.
+`price_band`와 같은 규칙으로 맞췄다.
+
+```sql
+AND (p.group_capacity IS NULL OR p.group_capacity >= :party_size)
+```
+
+> `outdoor_exposure`도 같은 모양이지만 **일부러 두었다.** 우천 하드컷은
+> "야외일지 모르는 곳"을 비 오는 날 빼는 것이 목적이라, 여기서 NULL을 통과시키면
+> 필터의 취지가 사라진다. DDL 기본값이 `0.0`이라 실제 NULL은
+> `--clear-seed-mock`이 지난 자리에만 생긴다.
+
+---
+
 **아직 임시인 것 (숨기지 않는다)**
 
 | | 지금 | 언제 바뀌나 |
 |---|---|---|
 | 취향 유사도 | `tag_embedding`이 비면 중립 0.5 | A가 16행을 채우면 즉시 동작 |
 | `explain_mode` | `LLM_API_KEY`가 없어 항상 `template` | 키가 생기면 `llm`/`cache` |
-| 설명 모델 | 미정 (`gpt-5.4-nano` 기본값) | W6에 nano/mini/sonnet 비교 |
+| 설명 모델 | `gemini-3.5-flash-lite` (2026-08-23 실측 채택) | B6-3 품질 비교 후 재검토 |
 
 ---
 
@@ -156,10 +238,14 @@ python -m tools.warm_cache --url https://dacos-wheretogo.onrender.com
 | B1-4 | 목 API | ✅ 코드 완료 / ⏳ 배포 대기 | [`app/`](app) · [`../render.yaml`](../render.yaml) · [배포 절차](docs/DEPLOY_MOCK.md) |
 | B1-5 | LLM 한도 실측 | ✅ | [실측 결과](docs/LLM_QUOTA.md) · [처리량](tools/llm_quota_probe.py) · [1건 실비용](tools/extract_cost_probe.py) |
 
-> **B1-5 결과 요약 (A에게):** FactChat 게이트웨이 · `gpt-5.4-nano` · POI당 **1,038토큰 / 2.3초**.
+> **B1-5 결과 요약 (A에게):** FactChat 게이트웨이 · `gemini-3.5-flash-lite` · POI당 **1,038토큰 / 2.3초**.
 > T1 800 POI가 **직렬 31분, 동시 8이면 4분**이다. §8.2의 "야간 배치 2~3일" 전제는 폐기해도 된다.
 > 대신 **`response_format`을 `json_schema` + `strict: true`로 강제해야 한다** — 안 하면 nano가
 > 스키마를 지어낸다. 자세한 실패 모드와 호출 형식은 [docs/LLM_QUOTA.md](docs/LLM_QUOTA.md).
+>
+> 🔴 **2026-08-23 갱신 2건.** ⓐ 기존 `gpt-5.4-nano`가 게이트웨이에서 내려가 404다.
+> ⓑ 호출에 **`User-Agent`가 없으면 Cloudflare가 403**(error 1010)을 준다 — 키와 무관하다.
+> A의 배치도 같은 게이트웨이를 쓰므로 둘 다 해당된다. [§0](docs/LLM_QUOTA.md) 참조.
 
 ---
 
@@ -232,6 +318,7 @@ roleB/
 ├── tests/                   # 276개. test_live_db.py는 실 DB가 있을 때만 돈다
 ├── scenarios/               # 워밍·측정용 시나리오 20개 (C의 docs/scenarios.md 실행본)
 ├── tools/
+│   ├── check_data_readiness.py  # 적재 상태 자가 점검 — 전환일에 먼저 돌린다
 │   ├── load_seed_db.py      # 개발용 시드 적재 (운영 적재는 A)
 │   ├── scenarios.py         # 시나리오 로딩 · 페이싱 · 퍼센타일 (W6 공용)
 │   ├── perf_probe.py        # 응답 지연 측정 (W6 B6-2)

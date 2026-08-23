@@ -22,11 +22,21 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.constants import CONGEST_LEVELS
+from app.services.context_fit import apparent_temperature
 from app.timeutil import KST
 
 # 스냅샷이 이보다 오래되면 "실시간"이라고 부르지 않는다.
-# 폴링 주기 15분의 두 배 + 여유. A의 배치가 죽은 것을 여기서 알 수 있다.
-SNAPSHOT_STALE_AFTER = timedelta(minutes=40)
+#
+# 처음엔 40분이었다 — "폴링 주기 15분의 두 배 + 여유". 실 DB를 붙여 재보니
+# **전제가 틀렸다.** A의 워크플로는 `*/15` cron이지만 GitHub Actions 무료 스케줄은
+# 지연·유실이 잦다. 2026-08-23 실측(704 간격, 11지점 · 2일):
+#
+#   평균 40분 · 최소 15분 · **최대 115분** · 40분 초과가 220/704 (31%)
+#
+# 40분으로 두면 정상 가동 중에도 3분의 1이 stale로 찍힌다. 그러면 이 신호는
+# "폴링이 죽었다"가 아니라 잡음이 된다. **경보는 실제로 이상할 때만 울려야 한다.**
+# 최대 간격보다 조금 낮게 잡아, 두 번 연속 유실되면 걸리도록 한다.
+SNAPSHOT_STALE_AFTER = timedelta(minutes=90)
 
 # FCST_PPLTN은 2시간 간격이다. 방문 시각이 이보다 멀면 예측을 쓰지 않는다.
 FORECAST_MATCH_TOLERANCE = timedelta(minutes=90)
@@ -94,9 +104,18 @@ def parse_citydata_weather(weather: Mapping[str, Any] | None) -> dict[str, Any] 
                     return weather[cand]
         return None
 
-    feels = as_float(pick("SENSIBLE_TEMP")) or as_float(pick("TEMP"))
+    feels = as_float(pick("SENSIBLE_TEMP"))
     if feels is None:
-        return None
+        temp = as_float(pick("TEMP"))
+        if temp is None:
+            return None
+        # ⚠️ 실측(V8.5 응답)에 `SENSIBLE_TEMP`는 **없다.** 대신 `HUMIDITY`·`WIND_SPD`가
+        # 온다. 기온을 그대로 체감으로 쓰면 31.3°C·습도 62%가 폭염 임계(31°)를
+        # 못 넘어 §6.3의 극한기온 계수가 실황 경로에서만 약하게 걸린다.
+        # 기상청 예보와 **같은 근사식**을 써야 두 소스의 체감이 어긋나지 않는다.
+        feels = apparent_temperature(
+            temp, as_float(pick("HUMIDITY")), as_float(pick("WIND_SPD"))
+        )
 
     precpt_type = str(pick("PRECPT_TYPE") or "").strip()
     raining = bool(precpt_type) and precpt_type not in ("없음", "-", "0")
@@ -109,6 +128,8 @@ def parse_citydata_weather(weather: Mapping[str, Any] | None) -> dict[str, Any] 
     if grade is None:
         grade = _AIR_IDX_TO_GRADE.get(str(pick("AIR_IDX") or "").strip())
 
+    sky = str(pick("SKY_STTS") or "").strip()
+
     return {
         "rain_prob": (chance / 100.0 if chance is not None else (1.0 if raining else 0.0)),
         "pm25_grade": grade or 2,
@@ -117,8 +138,13 @@ def parse_citydata_weather(weather: Mapping[str, Any] | None) -> dict[str, Any] 
         # 점수에는 시(hour)만 쓰지만 배너에는 원문을 그대로 보여준다.
         # "19:00"과 "19:42"는 해질녘 야외를 고를 때 체감이 다르다.
         "sunset": (str(pick("SUNSET")).strip() or None) if pick("SUNSET") else None,
-        "label": ("비" if raining else str(pick("SKY_STTS") or "맑음")),
+        "label": ("비" if raining else (sky or "맑음")),
         "precpt_type": precpt_type or "없음",
+        # ⚠️ 실측 응답의 `WEATHER_STTS`에는 **하늘 상태가 없다.** `SKY_STTS`는
+        # `FCST24HOURS` 슬롯에만 있다. 그래서 비가 안 오면 무조건 "맑음"이 됐다 —
+        # 흐린 날에도 배너가 "맑음"이라고 말한다. 호출부가 예보 슬롯에서
+        # 채울 수 있도록 **알고 넣은 값인지**를 같이 내보낸다.
+        "sky_known": bool(sky),
     }
 
 
@@ -146,21 +172,41 @@ def _valid_level(value: Any) -> str | None:
     return v if v in CONGEST_LEVELS else None
 
 
-def forecast_congest_at(
-    fcst: Sequence[Mapping[str, Any]] | None, visit_at: datetime
-) -> str | None:
-    """FCST_PPLTN(12시간 · 2시간 간격)에서 방문 시각에 가장 가까운 예측.
+def fcst_items(fcst: Any, kind: str) -> list[Mapping[str, Any]]:
+    """`hotspot_snapshot.fcst`에서 원하는 예측 배열을 꺼낸다.
+
+    이 컬럼은 **두 가지 형태**로 들어온다. 둘 다 받아야 한다.
+
+    | 형태 | 넣는 쪽 | 내용 |
+    |---|---|---|
+    | 배열 | `tools/load_seed_db.py` (개발용 목) | `FCST_PPLTN` 그대로 |
+    | 객체 | `roleA/jobs/poll_citydata.py` (운영) | `{"population": [...], "weather": [...]}` |
+
+    A가 **인구예측과 날씨예측을 한 컬럼에 함께** 보존하기로 하면서 객체가 됐다.
+    B가 배열만 받으면 `for item in fcst`가 키 문자열을 훑어 조용히 아무것도
+    못 찾는다 — 에러가 아니라 *"19시 붐빔 예상"* 배너가 사라진다. 그래서
+    **A의 형태에 B가 맞춘다.** 객체 쪽이 담는 정보가 더 많으므로 그게 맞다.
+    """
+    if not fcst:
+        return []
+    if isinstance(fcst, Mapping):
+        seq = fcst.get(kind) or fcst.get(kind.upper()) or []
+    else:
+        # 배열로 들어오면 인구예측이다. 날씨예측은 배열 형태로 온 적이 없다.
+        seq = fcst if kind == "population" else []
+    if isinstance(seq, (str, bytes)) or not isinstance(seq, Sequence):
+        return []
+    return [it for it in seq if isinstance(it, Mapping)]
+
+
+def forecast_congest_at(fcst: Any, visit_at: datetime) -> str | None:
+    """FCST_PPLTN(12시간 · 1시간 간격)에서 방문 시각에 가장 가까운 예측.
 
     예측 구간을 벗어난 방문 시각(12시간 뒤 등)이면 None이다.
     가까운 값을 억지로 늘려 쓰면 "밤 11시에 붐빔"처럼 틀린 근거가 화면에 뜬다.
     """
-    if not fcst:
-        return None
-
     best: tuple[timedelta, str] | None = None
-    for item in fcst:
-        if not isinstance(item, Mapping):
-            continue
+    for item in fcst_items(fcst, "population"):
         when = _parse_fcst_time(
             item.get("FCST_TIME") or item.get("fcst_time") or item.get("time")
         )
@@ -179,6 +225,65 @@ def forecast_congest_at(
 
 
 # ============================================================================
+# 날씨 예보 — 기상청 키가 없을 때의 두 번째 소스
+# ============================================================================
+
+
+def forecast_weather_at(fcst: Any, visit_at: datetime) -> dict[str, Any] | None:
+    """`FCST24HOURS`(24시간 · 1시간 간격)에서 방문 시각의 날씨 예보.
+
+    **왜 이게 필요한가.** 3시간 뒤 방문의 날씨는 기상청 단기예보가 담당한다
+    (`kma.py`). 그런데 그건 `KMA_SERVICE_KEY`가 있어야 하고, 없으면 실황으로
+    물러선다 — *"저녁에 갈 건데"* 에 지금 날씨로 답하게 된다. citydata는 같은
+    응답 안에 24시간 예보를 이미 주고 있다. **키 없이 쓸 수 있는 예보**다.
+
+    반환 형태를 `kma.parse_forecast`와 **일부러 똑같이** 맞춘다. 호출부가
+    소스를 구분하지 않고 그대로 쓸 수 있어야 한다.
+
+    한계는 정직하게 남긴다 — 예보에는 대기질도 일몰도 없다(기상청도 같다).
+    호출부가 실황에서 채운다.
+    """
+    best: tuple[timedelta, Mapping[str, Any]] | None = None
+    for item in fcst_items(fcst, "weather"):
+        when = _parse_fcst_time(
+            item.get("FCST_DT") or item.get("fcst_dt") or item.get("FCST_TIME")
+        )
+        if when is None:
+            continue
+        gap = abs(when - visit_at)
+        if best is None or gap < best[0]:
+            best = (gap, item)
+
+    if best is None or best[0] > FORECAST_MATCH_TOLERANCE:
+        return None
+
+    slot = best[1]
+    temp = as_float(slot.get("TEMP") or slot.get("temp"))
+    if temp is None:
+        return None
+
+    precpt_type = str(slot.get("PRECPT_TYPE") or slot.get("precpt_type") or "").strip()
+    raining = bool(precpt_type) and precpt_type not in ("없음", "-", "0")
+    chance = as_float(slot.get("RAIN_CHANCE") or slot.get("rain_chance"))
+    sky = str(slot.get("SKY_STTS") or slot.get("sky_stts") or "").strip()
+
+    return {
+        # 예보는 확률이다. `RAIN_CHANCE`가 실황에 없던 바로 그 값이다.
+        "rain_prob": (
+            chance / 100.0 if chance is not None else (1.0 if raining else 0.0)
+        ),
+        # 예보 슬롯에는 습도·풍속이 없다. 기온만으로 근사한다(27~10도 사이는 그대로).
+        "feels_like": apparent_temperature(temp),
+        "temp": temp,
+        "label": (precpt_type if raining else (sky or "맑음")),
+        "precpt_type": precpt_type or "없음",
+        "sunset_hour": None,        # 예보에 일몰이 없다. 실황에서 가져온다
+        "pm25_grade": None,         # 대기질도 없다. 위와 같다
+        "fcst_slot": str(slot.get("FCST_DT") or slot.get("fcst_dt") or ""),
+    }
+
+
+# ============================================================================
 # 스냅샷 묶음
 # ============================================================================
 
@@ -194,6 +299,8 @@ class HotspotSignals:
     congest_at_visit: str | None = None
     age_rates: Mapping[str, Any] | None = None
     weather: Mapping[str, Any] | None = None
+    # 방문 시각의 citydata 24시간 예보. 기상청 키가 없을 때의 두 번째 소스다.
+    weather_at_visit: Mapping[str, Any] | None = None
     is_stale: bool = False
 
     @property
@@ -219,14 +326,25 @@ def build_signals(
         reference = now or datetime.now(observed.tzinfo or KST)
         stale = (reference - observed) > SNAPSHOT_STALE_AFTER
 
+    fcst = snapshot.get("fcst")
+    weather = parse_citydata_weather(snapshot.get("weather"))
+
+    # 실황에 하늘 상태가 없으면(실측상 항상 그렇다) 관측 시각에 가장 가까운
+    # 예보 슬롯에서 빌려 온다. 비가 오는 중이면 "비"가 우선이므로 건드리지 않는다.
+    if weather is not None and not weather["sky_known"] and weather["rain_prob"] < 1.0:
+        nowcast = forecast_weather_at(fcst, observed if isinstance(observed, datetime) else visit_at)
+        if nowcast and nowcast["label"]:
+            weather = {**weather, "label": nowcast["label"], "sky_known": True}
+
     return HotspotSignals(
         code=snapshot["hotspot_code"],
         name=snapshot.get("hotspot_name"),
         observed_at=observed if isinstance(observed, datetime) else None,
         congest_now=_valid_level(snapshot.get("congest_lvl")),
-        congest_at_visit=forecast_congest_at(snapshot.get("fcst"), visit_at),
+        congest_at_visit=forecast_congest_at(fcst, visit_at),
         age_rates=snapshot.get("age_rates"),
-        weather=parse_citydata_weather(snapshot.get("weather")),
+        weather=weather,
+        weather_at_visit=forecast_weather_at(fcst, visit_at),
         is_stale=stale,
     )
 
@@ -243,6 +361,20 @@ def build_signal_map(
     return out
 
 
+def age_band_label(band: Any) -> str:
+    """`"20"` → `"20대"`. 양 끝 밴드만 다르게 부른다.
+
+    citydata는 `PPLTN_RATE_0`(0~9세)과 `PPLTN_RATE_70`(70세 이상)까지 준다.
+    이걸 그대로 붙이면 배너에 *"0대 12%"* 가 뜬다.
+    """
+    text = str(band).strip()
+    if text == "0":
+        return "10대 미만"
+    if text == "70":
+        return "70대 이상"
+    return f"{text}대"
+
+
 def age_mix_top(age_rates: Mapping[str, Any] | None) -> str | None:
     """{"20": 31.2, ...} → "20대 31%". 값이 없으면 문구를 지어내지 않는다."""
     if not age_rates:
@@ -253,4 +385,4 @@ def age_mix_top(age_rates: Mapping[str, Any] | None) -> str | None:
         return None
     band, rate = max(pairs, key=lambda kv: kv[1])
     pct = rate if rate > 1.0 else rate * 100.0
-    return f"{band}대 {pct:.0f}%"
+    return f"{age_band_label(band)} {pct:.0f}%"

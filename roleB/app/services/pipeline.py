@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import random
 import time
 from dataclasses import dataclass
@@ -50,6 +51,8 @@ from app.services.explain import template_reason
 from app.services.live_signals import HotspotSignals
 from app.services.scoring import build_terms, total_score
 from app.timeutil import parse_visit_at
+
+log = logging.getLogger("wheretogo.pipeline")
 
 DEFAULT_SUNSET_HOUR = 19
 DEFAULT_PM_GRADE = 2
@@ -87,19 +90,27 @@ def _resolve_weather(
     | 방문 시각 | 강수·기온 | 미세먼지 |
     |---|---|---|
     | 3시간 이상 뒤 | 기상청 단기예보 | citydata 실황 (예보에 대기질이 없다) |
+    | 〃 (기상청 키 없음/실패) | **citydata `FCST24HOURS`** | 〃 |
     | 2시간 이내 | citydata 실황 | citydata 실황 |
     | 소스 없음 | 결정적 프로파일 (`mock`) | 〃 |
 
-    기상청이 죽거나 키가 없으면 조용히 실황으로 물러선다. **예보가 없다고
-    추천이 멈추지는 않는다.** 대신 출처를 응답에 실어 원인이 보이게 한다.
+    기상청이 죽거나 키가 없으면 **먼저 citydata의 24시간 예보로 물러선다.**
+    A가 15분마다 적재하는 스냅샷에 이미 들어 있어 추가 호출도, 키도 필요 없다.
+    그것마저 없을 때에야 실황이다 — *"저녁에 갈 건데"* 에 지금 날씨로 답하는 것은
+    마지막 수단이어야 한다. **예보가 없다고 추천이 멈추지는 않는다.**
+    어느 쪽을 썼는지는 응답의 `weather_source`에 실린다.
     """
     live = dict(near.weather) if (near and near.weather) else None
 
     forecast = None
+    source = "kma"
     if kma.should_use_forecast(visit_at):
         forecast = kma.fetch_forecast(
             settings.kma_service_key, lat, lng, visit_at
         )
+        if not forecast and near and near.weather_at_visit:
+            forecast = dict(near.weather_at_visit)
+            source = "citydata_fcst"
 
     if forecast:
         wx = dict(forecast)
@@ -107,7 +118,9 @@ def _resolve_weather(
         wx["pm25_grade"] = (live or {}).get("pm25_grade") or DEFAULT_PM_GRADE
         wx["sunset_hour"] = (live or {}).get("sunset_hour") or DEFAULT_SUNSET_HOUR
         wx["sunset"] = (live or {}).get("sunset")
-        return wx, ("kma+citydata" if live else "kma")
+        if source == "kma":
+            return wx, ("kma+citydata" if live else "kma")
+        return wx, source
 
     if live:
         return live, "citydata"
@@ -151,6 +164,16 @@ def resolve_context(
 
     near_code = near_row["code"] if near_row else None
     near = signals.get(near_code) if near_code else None
+
+    # `is_stale`을 계산만 하고 아무도 안 봤다. 폴링이 멈춰도 조용히 낡은 값으로
+    # 점수가 나간다 — 배너는 멀쩡해 보이고 근거만 과거가 된다. 로그로 띄운다.
+    if near is not None and near.is_stale:
+        log.warning(
+            "스냅샷이 낡았다 (%s · %s) — 실시간 항이 과거 값으로 계산된다. "
+            "A의 15분 폴링(poll-citydata.yml)을 확인할 것",
+            near.code,
+            near.observed_at,
+        )
 
     wx, source = _resolve_weather(settings, lat, lng, visit_at, near)
     wx["visit_hour"] = visit_at.hour
@@ -207,6 +230,8 @@ def build_live_recommendation(
         rain_prob=float(wx.get("rain_prob") or 0.0),
         pm25_grade=int(wx.get("pm25_grade") or DEFAULT_PM_GRADE),
         user_id=req.user_id,          # 취향 유사도를 DB에서 계산하기 위한 키
+        conf_min=settings.attr_confidence_min,
+        conf_relaxed=settings.attr_confidence_relaxed,
     )
     found = retrieval.retrieve(executor, q)
     if not found.candidates:

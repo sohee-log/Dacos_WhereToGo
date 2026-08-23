@@ -35,7 +35,7 @@ services:
       - key: LLM_BASE_URL
         value: "https://factchat-cloud.mindlogic.ai/v1/gateway"
       - key: LLM_MODEL
-        value: "gpt-5.4-nano"
+        value: "gemini-3.5-flash-lite"
       # 아래는 대시보드에서 직접 입력한다 (레포에 값이 남지 않게)
       - key: DATABASE_URL
         sync: false
