@@ -224,7 +224,7 @@ AND (p.group_capacity IS NULL OR p.group_capacity >= :party_size)
 |---|---|---|
 | 취향 유사도 | `tag_embedding`이 비면 중립 0.5 | A가 16행을 채우면 즉시 동작 |
 | `explain_mode` | `LLM_API_KEY`가 없어 항상 `template` | 키가 생기면 `llm`/`cache` |
-| 설명 모델 | 미정 (`gpt-5.4-nano` 기본값) | W6에 nano/mini/sonnet 비교 |
+| 설명 모델 | `gemini-3.5-flash-lite` (2026-08-23 실측 채택) | B6-3 품질 비교 후 재검토 |
 
 ---
 
@@ -238,10 +238,14 @@ AND (p.group_capacity IS NULL OR p.group_capacity >= :party_size)
 | B1-4 | 목 API | ✅ 코드 완료 / ⏳ 배포 대기 | [`app/`](app) · [`../render.yaml`](../render.yaml) · [배포 절차](docs/DEPLOY_MOCK.md) |
 | B1-5 | LLM 한도 실측 | ✅ | [실측 결과](docs/LLM_QUOTA.md) · [처리량](tools/llm_quota_probe.py) · [1건 실비용](tools/extract_cost_probe.py) |
 
-> **B1-5 결과 요약 (A에게):** FactChat 게이트웨이 · `gpt-5.4-nano` · POI당 **1,038토큰 / 2.3초**.
+> **B1-5 결과 요약 (A에게):** FactChat 게이트웨이 · `gemini-3.5-flash-lite` · POI당 **1,038토큰 / 2.3초**.
 > T1 800 POI가 **직렬 31분, 동시 8이면 4분**이다. §8.2의 "야간 배치 2~3일" 전제는 폐기해도 된다.
 > 대신 **`response_format`을 `json_schema` + `strict: true`로 강제해야 한다** — 안 하면 nano가
 > 스키마를 지어낸다. 자세한 실패 모드와 호출 형식은 [docs/LLM_QUOTA.md](docs/LLM_QUOTA.md).
+>
+> 🔴 **2026-08-23 갱신 2건.** ⓐ 기존 `gpt-5.4-nano`가 게이트웨이에서 내려가 404다.
+> ⓑ 호출에 **`User-Agent`가 없으면 Cloudflare가 403**(error 1010)을 준다 — 키와 무관하다.
+> A의 배치도 같은 게이트웨이를 쓰므로 둘 다 해당된다. [§0](docs/LLM_QUOTA.md) 참조.
 
 ---
 

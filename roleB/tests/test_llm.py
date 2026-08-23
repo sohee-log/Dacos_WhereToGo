@@ -9,6 +9,7 @@ JSON이 깨졌든 호출부가 할 일은 같다 — 템플릿으로 폴백한�
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -126,3 +127,78 @@ def test_json_array_returns_none():
 @pytest.mark.parametrize("payload", [None, {}, {"choices": []}, "문자열", {"choices": [{}]}])
 def test_broken_envelopes_return_none(payload):
     assert llm.parse_choice(payload) is None
+
+
+# --- 요청을 어떻게 만드는가 --------------------------------------------------------
+#
+# 여기가 비어 있어서 사고가 났다. 파싱과 폴백만 검증하고 **요청 자체**는 한 번도
+# 보지 않았다. 그래서 `User-Agent`가 빠진 채로 전 테스트가 통과했고, prod에서만
+# Cloudflare가 403(error 1010)을 줬다 — 그리고 그 403마저 폴백에 삼켜졌다.
+# (docs/LLM_QUOTA.md §0-1)
+
+
+class _Resp:
+    def __init__(self, payload: dict):
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+@pytest.fixture
+def sent(monkeypatch) -> list:
+    """`urlopen`에 실제로 넘어간 Request를 잡아 둔다."""
+    captured: list = []
+
+    def fake_urlopen(req, timeout=None):
+        captured.append(req)
+        return _Resp({"choices": [{"message": {"content": '{"ok": 1}'}}]})
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    return captured
+
+
+def test_sends_a_user_agent(sent):
+    """🔴 회귀 방지. 기본 `Python-urllib/3.x`는 게이트웨이 앞단에서 차단된다."""
+    llm.chat_json(_settings(), "prompt", {"type": "object"}, "s")
+    ua = sent[0].get_header("User-agent")
+    assert ua and "python-urllib" not in ua.lower()
+
+
+def test_sends_the_key_as_a_bearer_token(sent):
+    llm.chat_json(_settings(llm_api_key="k123"), "prompt", {"type": "object"}, "s")
+    assert sent[0].get_header("Authorization") == "Bearer k123"
+
+
+def test_url_keeps_the_trailing_slash(sent):
+    """끝 슬래시가 없으면 게이트웨이가 다른 응답을 준다 (docs/LLM_QUOTA.md)."""
+    llm.chat_json(_settings(), "prompt", {"type": "object"}, "s")
+    assert sent[0].full_url.endswith("/chat/completions/")
+
+
+def test_forces_a_strict_json_schema(sent):
+    """이걸 빼면 모델이 스키마를 통째로 지어낸다. 실측된 실패 모드다."""
+    schema = {"type": "object", "properties": {}}
+    llm.chat_json(_settings(llm_model="m1"), "프롬프트", schema, "my_schema")
+    body = json.loads(sent[0].data.decode("utf-8"))
+    assert body["model"] == "m1"
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["response_format"]["json_schema"]["name"] == "my_schema"
+    assert body["response_format"]["json_schema"]["schema"] == schema
+
+
+def test_http_error_is_swallowed_into_none(sent, monkeypatch):
+    """403이든 429든 호출부가 할 일은 같다 — 템플릿으로 폴백한다."""
+
+    def boom(req, timeout=None):
+        raise llm.urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", boom)
+    assert llm.chat_json(_settings(), "prompt", {}, "s") is None

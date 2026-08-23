@@ -44,6 +44,7 @@ BASE_TIMES = (2, 5, 8, 11, 14, 17, 20, 23)
 BASE_PUBLISH_DELAY = timedelta(minutes=15)   # 여유를 두고 이전 회차를 쓴다
 
 HTTP_TIMEOUT = 4.0            # 무료 티어에서 외부 API가 워커를 잡아먹지 않게
+USER_AGENT = "wheretogo-api/0.1 (+https://github.com/sohee-log/Dacos_WhereToGo)"
 NUM_OF_ROWS = 300             # 카테고리 12종 × 시간대. 넉넉히 받아 로컬에서 고른다
 
 _SKY = {1: "맑음", 3: "구름많음", 4: "흐림"}
@@ -227,8 +228,12 @@ def _request(
     )
     url = f"{ENDPOINT}?serviceKey={_service_key_param(service_key)}&{query}"
 
+    # UA를 붙인다. 기본 `Python-urllib/3.x`를 WAF가 막는 사례를 게이트웨이에서
+    # 이미 한 번 겪었다(`llm.py` 참조). 여기도 조용히 폴백해 버리는 경로라 티가 안 난다.
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+
     try:
-        with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         # 예보가 없다고 추천이 멈추면 안 된다. 실황으로 물러선다.

@@ -111,7 +111,7 @@ def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
         "outdoor_exposure IS DISTINCT FROM 0": {"filled": 0, "total": 6644},
         "quality_score IS NOT NULL": {"filled": 0, "total": 6644},
         "hotspot_code IS NOT NULL": {"filled": 0, "total": 6644},
-        "fcst IS NOT NULL": {"filled": 0, "total": 0},
+        "fcst->'population'": {"filled": 0, "total": 0},
     }
     cur = FakeCursor(answers)
     checks = [
@@ -120,6 +120,12 @@ def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
     ]
     for c in checks:
         rd.run(cur, c, {"conf_min": 0.30})
+
+    # 점검 SQL을 고쳤는데 위 스텁을 안 고치면 그 항목이 '조회 실패'로 빠진다.
+    # 조용히 통과해 버리므로 여기서 먼저 잡는다.
+    assert not [c for c in checks if c.error], (
+        f"스텁이 못 받은 점검: {[c.label for c in checks if c.error]}"
+    )
 
     fatal = [c for c in checks if c.fatal and (c.error or c.filled == 0)]
     assert any("attr_confidence" in c.label for c in fatal), "후보 전멸을 못 잡았다"

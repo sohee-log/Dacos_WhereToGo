@@ -43,6 +43,32 @@ jobs:
       - name: Scan git history
         run: gitleaks git . --config .gitleaks.toml --redact --no-banner
 
+  # roleB는 지금까지 CI에서 한 번도 안 돌았다. 로컬에서만 돌던 316건이
+  # 실제로는 게이트가 아니었다는 뜻이다 — 계약 테스트를 늘려 놓고 CI에 안 걸면
+  # 형태가 바뀌었을 때 아무도 모른다 (docs/LLM_QUOTA.md §0의 사고가 그랬다).
+  api:
+    name: roleB tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: roleB
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"      # Render와 같은 버전으로 맞춘다
+          cache: pip
+          cache-dependency-path: roleB/requirements-dev.txt
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      # 네트워크·DB가 필요한 테스트는 스스로 skip한다(TEST_DATABASE_URL 없음).
+      # 여기서 도는 것은 순수 로직과 계약 테스트다.
+      - name: Test
+        run: pytest -q
+
   web:
     name: roleC lint + build
     runs-on: ubuntu-latest

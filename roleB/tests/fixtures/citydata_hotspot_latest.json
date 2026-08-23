@@ -1,0 +1,187 @@
+{
+  "hotspot_code": "POI009",
+  "hotspot_name": "광화문·덕수궁",
+  "observed_at": "2026-08-23 18:00",
+  "congest_lvl": "여유",
+  "ppltn_min": 26000,
+  "ppltn_max": 28000,
+  "age_rates": {
+    "0": 1.0,
+    "10": 4.3,
+    "20": 20.8,
+    "30": 23.2,
+    "40": 22.3,
+    "50": 17.0,
+    "60": 7.7,
+    "70": 3.7
+  },
+  "male_rate": 47.8,
+  "female_rate": 52.2,
+  "weather": {
+    "WEATHER_TIME": "2026-08-23 18:20",
+    "TEMP": "31.3",
+    "MAX_TEMP": "33.0",
+    "MIN_TEMP": "25.0",
+    "HUMIDITY": "62",
+    "WIND_DIRCT": "SE",
+    "WIND_SPD": "1.9",
+    "PRECIPITATION": "-",
+    "PRECPT_TYPE": "없음",
+    "PCP_MSG": "비 또는 눈 소식이 없어요.",
+    "SUNRISE": "05:43",
+    "SUNSET": "19:31",
+    "UV_INDEX_LVL": "낮음",
+    "UV_INDEX": "1",
+    "UV_MSG": "햇볕에 민감한 분들은 자외선 차단제를 발라주세요.",
+    "PM25_INDEX": "좋음",
+    "PM25": "9",
+    "PM10_INDEX": "좋음",
+    "PM10": "10",
+    "AIR_IDX": "보통",
+    "AIR_IDX_MVL": "63.0",
+    "AIR_IDX_MAIN": "",
+    "AIR_MSG": "호흡기가 예민하신 분들은 몸상태 유의하며 활동해주세요."
+  },
+  "fcst": {
+    "population": [
+      {
+        "FCST_TIME": "2026-08-23 19:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "20000",
+        "FCST_PPLTN_MAX": "22000"
+      },
+      {
+        "FCST_TIME": "2026-08-23 20:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "14000",
+        "FCST_PPLTN_MAX": "16000"
+      },
+      {
+        "FCST_TIME": "2026-08-23 21:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "10000",
+        "FCST_PPLTN_MAX": "12000"
+      },
+      {
+        "FCST_TIME": "2026-08-23 22:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "7500",
+        "FCST_PPLTN_MAX": "8000"
+      },
+      {
+        "FCST_TIME": "2026-08-23 23:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "5000",
+        "FCST_PPLTN_MAX": "5500"
+      },
+      {
+        "FCST_TIME": "2026-08-24 00:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "3500",
+        "FCST_PPLTN_MAX": "4000"
+      },
+      {
+        "FCST_TIME": "2026-08-24 01:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "2500",
+        "FCST_PPLTN_MAX": "3000"
+      },
+      {
+        "FCST_TIME": "2026-08-24 02:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "2000",
+        "FCST_PPLTN_MAX": "2500"
+      },
+      {
+        "FCST_TIME": "2026-08-24 03:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "2000",
+        "FCST_PPLTN_MAX": "2500"
+      },
+      {
+        "FCST_TIME": "2026-08-24 04:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "2000",
+        "FCST_PPLTN_MAX": "2500"
+      },
+      {
+        "FCST_TIME": "2026-08-24 05:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "1500",
+        "FCST_PPLTN_MAX": "2000"
+      },
+      {
+        "FCST_TIME": "2026-08-24 06:00",
+        "FCST_CONGEST_LVL": "여유",
+        "FCST_PPLTN_MIN": "4500",
+        "FCST_PPLTN_MAX": "5000"
+      }
+    ],
+    "weather": [
+      {
+        "FCST_DT": "202608231900",
+        "TEMP": "29",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "0",
+        "SKY_STTS": "맑음"
+      },
+      {
+        "FCST_DT": "202608232000",
+        "TEMP": "29",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "0",
+        "SKY_STTS": "맑음"
+      },
+      {
+        "FCST_DT": "202608232100",
+        "TEMP": "28",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "0",
+        "SKY_STTS": "맑음"
+      },
+      {
+        "FCST_DT": "202608232200",
+        "TEMP": "27",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "0",
+        "SKY_STTS": "맑음"
+      },
+      {
+        "FCST_DT": "202608232300",
+        "TEMP": "27",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "20",
+        "SKY_STTS": "맑음"
+      },
+      {
+        "FCST_DT": "202608240000",
+        "TEMP": "27",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "20",
+        "SKY_STTS": "구름많음"
+      },
+      {
+        "FCST_DT": "202608240100",
+        "TEMP": "26",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "20",
+        "SKY_STTS": "구름많음"
+      },
+      {
+        "FCST_DT": "202608240200",
+        "TEMP": "26",
+        "PRECIPITATION": "-",
+        "PRECPT_TYPE": "없음",
+        "RAIN_CHANCE": "20",
+        "SKY_STTS": "구름많음"
+      }
+    ]
+  }
+}

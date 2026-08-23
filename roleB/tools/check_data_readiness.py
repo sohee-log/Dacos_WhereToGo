@@ -186,11 +186,18 @@ CHECKS: list[Check] = [
     Check(
         label="hotspot_snapshot (혼잡 예보)",
         term="crowd_fit",
+        # ⚠️ `fcst IS NOT NULL`로는 부족하다. A가 이 컬럼을
+        # `{"population": [], "weather": []}`로 넣으면 NOT NULL이면서 **빈 예보**다.
+        # 슬롯 수를 직접 센다. 배열(개발용 목)과 객체(운영) 둘 다 받는다.
         sql=(
-            "SELECT count(*) FILTER (WHERE fcst IS NOT NULL) AS filled,"
-            " count(*) AS total FROM hotspot_snapshot"
+            "SELECT count(*) FILTER (WHERE jsonb_array_length("
+            "  CASE jsonb_typeof(fcst)"
+            "    WHEN 'array'  THEN fcst"
+            "    WHEN 'object' THEN COALESCE(fcst->'population', '[]'::jsonb)"
+            "    ELSE '[]'::jsonb END) > 0) AS filled,"
+            " count(*) AS total FROM hotspot_latest"
         ),
-        note="fcst가 비면 방문 시각 예보가 사라지고 실황으로 물러선다",
+        note="비면 '19시 붐빔 예상'이 사라지고 실황으로 물러선다 (FCST_PPLTN)",
     ),
 ]
 
@@ -216,6 +223,18 @@ SIDE_CHECKS: list[Check] = [
             " count(*) AS total FROM review_chunk"
         ),
         note="임베딩이 없는 청크도 인용에는 쓴다. 벡터 정렬만 못 한다",
+    ),
+    Check(
+        label="citydata 날씨 예보",
+        term=None,
+        # `KMA_SERVICE_KEY`가 아직 없다. 그동안 '3시간 뒤 방문'의 날씨는
+        # 이 `FCST24HOURS`가 담당한다 (weather_source="citydata_fcst").
+        sql=(
+            "SELECT count(*) FILTER (WHERE jsonb_typeof(fcst) = 'object'"
+            "   AND jsonb_array_length(COALESCE(fcst->'weather', '[]'::jsonb)) > 0"
+            " ) AS filled, count(*) AS total FROM hotspot_latest"
+        ),
+        note="비면 '저녁에 갈 건데'가 지금 날씨로 답한다 (기상청 키가 없는 동안의 유일한 예보)",
     ),
 ]
 

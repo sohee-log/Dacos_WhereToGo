@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # 키만 시크릿이다. URL과 모델명은 공개해도 무방하므로 기본값을 둔다.
     llm_api_key: str | None = None
     llm_base_url: str = "https://factchat-cloud.mindlogic.ai/v1/gateway"
-    llm_model: str = "gpt-5.4-nano"
+    llm_model: str = "gemini-3.5-flash-lite"
     # 강제 폴백 스위치. W5의 템플릿 폴백 테스트(B5-5)에서 쓴다.
     llm_force_fail: bool = False
     llm_max_tokens: int = 700
