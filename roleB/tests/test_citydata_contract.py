@@ -37,13 +37,38 @@ from app.timeutil import KST
 FIXTURE = Path(__file__).parent / "fixtures" / "citydata_hotspot_latest.json"
 
 
+def _shift(text: str, fmt: str, delta: timedelta) -> str:
+    return (datetime.strptime(text, fmt) + delta).strftime(fmt)
+
+
 @pytest.fixture
 def row() -> dict:
-    """A가 `hotspot_snapshot`에 넣는 한 행. `observed_at`만 datetime으로 되돌린다."""
+    """A가 `hotspot_snapshot`에 넣는 한 행. **시각을 지금으로 옮긴다.**
+
+    픽스처는 2026-08-23 18:00에 뜬 실제 응답이다. 그대로 쓰면
+    `kma.should_use_forecast()`가 **실제 벽시계**와 비교하므로, 테스트가 도는
+    시각에 따라 결과가 갈린다. 실제로 CI에서 한 번 깨졌다 — 로컬은 18:5x라
+    통과했고 CI는 19:02라 방문까지 2시간 58분이 되어 예보 구간(3시간) 밖이었다.
+    **날짜가 박힌 픽스처와 `now()`를 보는 코드를 같이 쓰면 언젠가 깨진다.**
+
+    그래서 `observed_at`을 정시로 자른 현재 시각에 맞추고 예측 슬롯을 같은
+    폭만큼 민다. 형태와 값은 그대로고 시각만 상대적으로 바뀐다.
+    """
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    data["observed_at"] = datetime.strptime(
-        data["observed_at"], "%Y-%m-%d %H:%M"
-    ).replace(tzinfo=KST)
+    observed = datetime.strptime(data["observed_at"], "%Y-%m-%d %H:%M").replace(tzinfo=KST)
+    delta = datetime.now(KST).replace(minute=0, second=0, microsecond=0) - observed
+
+    data["observed_at"] = observed + delta
+    data["fcst"] = {
+        "population": [
+            {**s, "FCST_TIME": _shift(s["FCST_TIME"], "%Y-%m-%d %H:%M", delta)}
+            for s in data["fcst"]["population"]
+        ],
+        "weather": [
+            {**s, "FCST_DT": _shift(s["FCST_DT"], "%Y%m%d%H%M", delta)}
+            for s in data["fcst"]["weather"]
+        ],
+    }
     return data
 
 
@@ -156,7 +181,9 @@ def test_weather_forecast_outside_range_is_none(row, visit):
 
 def test_resolve_weather_uses_citydata_forecast_without_a_kma_key(row):
     """🟠 `KMA_SERVICE_KEY`가 아직 없다. 그래도 '저녁에 갈 건데'가 예보로 답해야 한다."""
-    visit = row["observed_at"] + timedelta(hours=4)      # 3시간 이상 뒤 = 예보 구간
+    # `observed_at`은 정시로 잘린 현재 시각이다. +5h면 실제 now 기준으로도
+    # 최소 4시간 1분 뒤라 예보 구간(3시간)에 확실히 들어간다.
+    visit = row["observed_at"] + timedelta(hours=5)
     sig = build_signals(row, visit, now=row["observed_at"])
     wx, source = _resolve_weather(
         Settings(kma_service_key=None), 37.5340, 126.9946, visit, sig
@@ -169,7 +196,7 @@ def test_resolve_weather_uses_citydata_forecast_without_a_kma_key(row):
 def test_resolve_weather_falls_back_to_live_without_any_forecast(row):
     """예보 슬롯이 비면 실황이다. 그게 마지막 수단이라는 것만 출처로 드러난다."""
     row["fcst"] = {"population": [], "weather": []}
-    visit = row["observed_at"] + timedelta(hours=4)
+    visit = row["observed_at"] + timedelta(hours=5)      # 예보 구간인데도 슬롯이 없다
     sig = build_signals(row, visit, now=row["observed_at"])
     _, source = _resolve_weather(
         Settings(kma_service_key=None), 37.5340, 126.9946, visit, sig
