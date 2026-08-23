@@ -31,9 +31,13 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.constants import W
+from app.services.live_signals import SNAPSHOT_STALE_AFTER
 
-# 스냅샷이 이보다 오래되면 15분 폴링이 죽은 것이다 (live_signals와 같은 기준).
-SNAPSHOT_STALE_MIN = 40
+# 스냅샷이 이보다 오래되면 폴링이 죽은 것이다.
+# **상수를 복사하지 않는다.** 엔진(`live_signals`)이 실제로 쓰는 값을 그대로 가져온다.
+# 복사해 뒀더니 엔진은 90분, 도구는 40분으로 갈려서 같은 DB를 보고 서로 다른 판정을
+# 냈다. 전환 게이트가 도구 쪽이라, 갈리면 잘못된 쪽을 믿게 된다.
+SNAPSHOT_STALE_MIN = int(SNAPSHOT_STALE_AFTER.total_seconds() // 60)
 
 # A가 채워야 하는 고정 행수. 어휘가 유한하다는 성질에서 나온 숫자다.
 TAG_EMBEDDING_ROWS = 16          # 분위기 10 + 목적 6
@@ -129,13 +133,29 @@ CHECKS: list[Check] = [
         ),
     ),
     Check(
-        label="segment_affinity 조인",
+        label="segment_affinity 통계",
         term="segment_affinity",
+        # ⚠️ 예전엔 `poi.commercial_area_id IS NOT NULL`을 셌다. 그건 **조인 키**지
+        # 통계가 아니다. 키가 95.6% 차 있어도 `segment_affinity`가 0행이면 조인
+        # 결과는 전 건 NULL이고 항은 전 POI 중립(0.5)이다 — 즉 기여 0인데
+        # 도구는 "살아 있음"이라고 답했다. **전환 게이트의 거짓 초록불이었다.**
+        # 실제로 채워지는 쪽을 센다.
         sql=(
-            "SELECT count(*) FILTER (WHERE p.commercial_area_id IS NOT NULL) AS filled,"
-            " count(*) AS total FROM poi p"
+            "SELECT count(DISTINCT p.poi_id) AS filled, (SELECT count(*) FROM poi) AS total"
+            " FROM poi p JOIN segment_affinity s"
+            "   ON s.commercial_area_id = p.commercial_area_id"
+            "  AND s.category_l2 = p.category_l2"
         ),
-        note="상권 코드가 없으면 세그먼트 통계를 붙일 축이 없다",
+        note="상권코드×업종으로 실제 조인되는 POI 수. 0이면 개인화 근거(0.22)가 통째로 상수다",
+    ),
+    Check(
+        label="commercial_area_id (조인 키)",
+        term=None,
+        sql=(
+            "SELECT count(*) FILTER (WHERE commercial_area_id IS NOT NULL) AS filled,"
+            " count(*) AS total FROM poi"
+        ),
+        note="위 통계를 붙일 축. 이것만 차 있고 통계가 비면 조인 결과는 전 건 NULL이다",
     ),
     Check(
         label="purpose_tags",

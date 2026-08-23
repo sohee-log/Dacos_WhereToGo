@@ -105,6 +105,7 @@ def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
         # poi는 있지만 attr_confidence는 전 건 0이다
         "count(*) AS filled, count(*) AS total FROM poi": {"filled": 6644, "total": 6644},
         "attr_confidence >= ": {"filled": 0, "total": 6644},
+        "JOIN segment_affinity s": {"filled": 0, "total": 6644},
         "commercial_area_id IS NOT NULL": {"filled": 6354, "total": 6644},
         "purpose_tags IS NOT NULL": {"filled": 0, "total": 6644},
         "tag_vector IS NOT NULL": {"filled": 0, "total": 6644},
@@ -132,9 +133,13 @@ def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
 
     scored = [c for c in checks if c.term]
     live = sum(W[c.term] for c in scored if c.alive)
-    # 살아 있는 건 상권 조인(세그먼트) 하나뿐이다.
-    assert live == pytest.approx(W["segment_affinity"])
-    assert live / sum(W[c.term] for c in scored) < 0.3
+    # 🔴 예전엔 여기서 segment_affinity가 '살아 있음'으로 잡혔다. 조인 **키**만
+    # 세고 있었기 때문이다. 통계 테이블이 0행이면 조인 결과는 전 건 NULL이고
+    # 항은 전 POI 중립이다 — 기여가 '적은' 게 아니라 정확히 0이다.
+    assert not any(c.term == "segment_affinity" and c.alive for c in checks), (
+        "조인 키만 보고 세그먼트 항을 살아 있다고 판정했다 — 전환 게이트의 거짓 초록불"
+    )
+    assert live == pytest.approx(0.0), "이 상태에서 순위를 움직이는 항은 하나도 없다"
 
 
 def test_임계값을_낮추면_후보는_남는다():
