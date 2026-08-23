@@ -224,3 +224,62 @@ def test_build_signals_reads_every_line_of_the_banner(row, visit):
     assert sig.weather is not None
     assert sig.weather_at_visit is not None
     assert sig.is_stale is False
+
+
+# ---------------------------------------------------------------------------
+# 하늘 상태 — 실황에 없는 필드를 예보에서 빌려 온다
+# ---------------------------------------------------------------------------
+
+
+def test_live_weather_has_no_sky_status(row):
+    """`SKY_STTS`는 `FCST24HOURS` 안에만 있다. 실황에는 없다 — 실측이다."""
+    assert "SKY_STTS" not in row["weather"]
+
+
+def test_banner_does_not_claim_clear_sky_on_a_cloudy_day(row, visit):
+    """비가 안 오면 무조건 '맑음'이었다. 흐린 날에도 그랬다."""
+    slots = [{**s, "SKY_STTS": "흐림"} for s in fcst_items(row["fcst"], "weather")]
+    row["fcst"] = {"population": row["fcst"]["population"], "weather": slots}
+
+    sig = build_signals(row, visit, now=row["observed_at"])
+    assert sig.weather["label"] == "흐림"
+
+
+def test_rain_wins_over_the_forecast_sky(row, visit):
+    """실황에서 비가 오는 중이면 예보의 하늘 상태로 덮지 않는다."""
+    row["weather"] = {**row["weather"], "PRECPT_TYPE": "비"}
+    row["fcst"] = {
+        "population": row["fcst"]["population"],
+        "weather": [{**s, "SKY_STTS": "맑음"} for s in fcst_items(row["fcst"], "weather")],
+    }
+    sig = build_signals(row, visit, now=row["observed_at"])
+    assert sig.weather["label"] == "비"
+
+
+def test_sky_stays_clear_when_the_forecast_says_so(row, visit):
+    sig = build_signals(row, visit, now=row["observed_at"])
+    assert sig.weather["label"] == "맑음"      # 픽스처의 예보 슬롯이 전부 맑음이다
+
+
+# ---------------------------------------------------------------------------
+# 신선도 — 임계값이 실제 폴링 간격과 맞는가
+# ---------------------------------------------------------------------------
+
+
+def test_stale_threshold_tolerates_the_real_polling_cadence(row):
+    """`*/15` cron이지만 실측 평균은 40분, 최대 115분이다 (2026-08-23 · 704 간격).
+
+    40분으로 두면 정상 가동 중 31%가 stale로 찍힌다 — 경보가 잡음이 된다.
+    """
+    from app.services.live_signals import SNAPSHOT_STALE_AFTER
+
+    assert SNAPSHOT_STALE_AFTER > timedelta(minutes=60)
+
+    normal = build_signals(
+        row, row["observed_at"], now=row["observed_at"] + timedelta(minutes=55)
+    )
+    broken = build_signals(
+        row, row["observed_at"], now=row["observed_at"] + timedelta(minutes=150)
+    )
+    assert normal.is_stale is False
+    assert broken.is_stale is True
