@@ -149,7 +149,7 @@ LEFT JOIN LATERAL (
         FROM review_chunk
         WHERE poi_id = p.poi_id
         -- written_at이 전 건 NULL이면 동점이라 순서가 매번 달라진다 (rag.py 참조)
-        ORDER BY is_sponsored, written_at DESC NULLS LAST, chunk_id
+        ORDER BY is_sponsored, written_at DESC NULLS LAST, chunk_id DESC
         LIMIT 5
     ) c
 ) r ON TRUE
@@ -245,6 +245,16 @@ def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
         result.radius_m = radius
         result.radius_expanded = True
         result.strategy = "radius_expanded"
+
+    # 반경을 다 넓혔는데도 얇으면, 결과가 3건 나오더라도 **순위는 못 믿는다.**
+    # 예전엔 이 표시를 ②·③ 분기에서만 켰다. 그래서 임계값을 통과한 POI가 전
+    # 도시에 3건뿐인 상태에서도 `low_confidence=False`가 나갔다 —
+    # C에게 준 계약("후보가 극소수 → 순위를 신뢰하기 어렵다")과 어긋나고,
+    # 하필 **안전한 쪽으로 틀리지 않는다.** 전환 판정을 이 필드로 보는데
+    # 3/6,644에서 초록불이 켜진다. MIN_CANDIDATES가 이미 "순위가 의미를 갖는
+    # 최소 후보 수"라 그 기준을 그대로 쓴다.
+    if len(result.candidates) < MIN_CANDIDATES:
+        result.low_confidence = True
 
     if len(result.candidates) >= RESULT_MIN:
         return result

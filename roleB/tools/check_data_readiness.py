@@ -361,7 +361,15 @@ _ATTR_COLUMNS: list[tuple[str, str]] = [
     ("price_band", "price_band IS NOT NULL"),
     ("group_capacity", "group_capacity IS NOT NULL"),
     ("sentiment_score", "sentiment_score IS NOT NULL"),
-    ("wait_intensity", "wait_intensity IS NOT NULL"),
+    # ⚠️ `IS NOT NULL`로는 부족하다. LLM이 근거가 없을 때 null이 아니라
+    # `{"weekday": null, "weekend": null}` **객체**를 돌려주고, A는 그걸 그대로
+    # Jsonb로 넣는다(실측: 추출 10건 중 7건이 이 모양, 실제 값이 든 건 0건).
+    # 컬럼은 NOT NULL인데 내용은 비어 있다 — hotspot_snapshot.fcst와 같은 함정이다.
+    (
+        "wait_intensity",
+        "wait_intensity IS NOT NULL AND (wait_intensity->>'weekday' IS NOT NULL"
+        " OR wait_intensity->>'weekend' IS NOT NULL)",
+    ),
     ("business_hours", "business_hours IS NOT NULL"),
 ]
 

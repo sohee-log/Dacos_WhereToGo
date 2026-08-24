@@ -468,3 +468,37 @@ group_capacity: number | null;
 §5의 전환 절차는 그대로다. 다만 이제 출력 아래쪽에 **A3-2 전용 섹션**이 붙는다
 (추출 진척 · 컬럼별 관측률 · `attr_confidence` 통과율). 전환일에 여기 숫자를
 같이 봐 달라 — "적재가 끝났다"와 "추천이 의미 있다"는 여전히 다른 얘기다.
+
+### 11-5. 🔴 `low_confidence`가 거짓말을 하고 있었다 — 고쳤다
+
+실 DB로 붙여 보니 이랬다.
+
+```jsonc
+// 이태원 · 데이트 · 2인 · 2시간 뒤 (실 DB · 2026-08-24)
+{"results": [ /* 3건 */ ],
+ "low_confidence": false,      // ← 전 도시에서 후보가 3건뿐인데 false였다
+ "radius_expanded": true}
+```
+
+이 표시를 **완화·최근접 분기에서만** 켜고 있었다. 반경만 넓혀서 3건을 채우면
+`false`가 나간다. 계약에 적어 둔 뜻(*"후보가 극소수 → 순위를 신뢰하기 어렵다"*)과
+어긋나고, 하필 **안전한 쪽으로 틀리지 않는다** — 전환 시점을 이 필드로 판단하는데
+3/6,644에서 초록불이 켜진다.
+
+이제 반경을 다 넓히고도 후보가 `MIN_CANDIDATES`(30) 밑이면 `true`다.
+**지금 실 DB에서는 `low_confidence` · `radius_expanded` 둘 다 `true`고, A의 배치가
+끝날 때까지 계속 그렇다.** 디버그 화면(`?debug=1`)에 띄워 두면 전환 시점이 눈에 보인다.
+
+### 11-6. Render 환경변수 — `DATABASE_URL`은 **pooler 주소**여야 한다
+
+`db: false`가 아직 그대로다(`/health` 실측). 넣을 때 주의할 게 하나 있다.
+Supabase가 주는 **Direct connection URL(`db.<ref>.supabase.co`)은 이 환경에서
+DNS가 안 풀린다** — IPv6 전용이다. Render에서도 같은 실패가 날 가능성이 높다.
+
+```
+❌ postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
+✅ postgresql://postgres.<ref>:<pw>@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+```
+
+**Session pooler 주소를 쓴다.** B는 로컬에서 pooler로 붙어 366건을 통과시켰다.
+`MOCK_MODE`가 `true`인 동안은 풀을 열지 않으니 미리 넣어 둬도 안전하다.

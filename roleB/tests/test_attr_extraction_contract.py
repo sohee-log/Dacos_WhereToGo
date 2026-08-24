@@ -263,11 +263,15 @@ def test_chunk_ordering_is_deterministic_without_written_at():
 
     전 건 NULL이면 `ORDER BY written_at DESC NULLS LAST`는 동점이고, 같은 요청이
     요청마다 다른 문장을 인용할 수 있다. 인용은 재현 가능해야 한다.
+
+    `DESC`인 것도 계약이다. 주 정렬키가 `written_at DESC`(최신 우선)이고
+    `chunk_id`는 BIGSERIAL이라 시간순으로 는다 — `ASC`로 끊으면 동점 구간에서만
+    **정렬 방향이 뒤집혀** 가장 오래된 청크가 대표 인용이 된다.
     """
     for sql in (EVIDENCE_FALLBACK_SQL, POI_DETAIL_SQL):
-        assert re.search(r"written_at DESC NULLS LAST,\s*\n?\s*(rc\.)?chunk_id", sql), (
-            "written_at이 전 건 NULL일 때 인용 순서가 비결정적이다"
-        )
+        assert re.search(
+            r"written_at DESC NULLS LAST,\s*(rc\.)?chunk_id DESC", sql
+        ), "written_at이 전 건 NULL일 때 인용 순서가 비결정적이거나 방향이 뒤집혔다"
 
 
 def test_detail_does_not_fabricate_unobserved_attributes():
