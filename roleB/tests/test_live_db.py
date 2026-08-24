@@ -138,10 +138,37 @@ def test_null_group_capacity_is_not_dropped(executor, query):
 
 
 def test_rain_hard_cut_excludes_exposed_places(executor, query):
+    """관측된 야외만 잘라낸다. **미관측(NULL)은 자르지 않는다** — 아래 테스트 참조."""
     rainy = retrieval.RetrievalQuery(**{**query.__dict__, "rain_prob": 0.9})
     result = retrieval.retrieve(executor, rainy)
     if result.strategy != "nearest_fallback":
-        assert all(r["outdoor_exposure"] <= 0.7 for r in result.candidates)
+        assert all(
+            r["outdoor_exposure"] is None or r["outdoor_exposure"] <= 0.7
+            for r in result.candidates
+        )
+
+
+def test_null_outdoor_exposure_survives_the_rain_cut(executor, query):
+    """야외 노출을 **모르는** POI가 비 오는 날 통째로 사라지면 안 된다.
+
+    `p.outdoor_exposure <= 0.7`에 NULL이 들어오면 3값 논리로 WHERE가 NULL이 되어
+    그 행이 항상 빠진다. group_capacity와 같은 함정인데, 예전엔 "DDL 기본값이
+    0.0이라 NULL이 안 생긴다"는 전제로 일부러 남겨 뒀다. A의 A3-2가 리뷰에
+    근거가 없으면 이 컬럼을 NULL로 남기면서 그 전제가 깨졌다 — T1이 통째로
+    비 오는 날 후보에서 빠질 수 있는 모양이었다.
+    """
+    null_rows = executor(
+        "SELECT count(*) AS n FROM poi WHERE outdoor_exposure IS NULL", {}
+    )[0]["n"]
+    if not null_rows:
+        pytest.skip("NULL outdoor_exposure 행이 없다 — A3-2가 아직 안 돌았다")
+
+    rainy = retrieval.RetrievalQuery(**{**query.__dict__, "rain_prob": 0.9})
+    params = retrieval._params(rainy, 100_000.0, 0.0)
+    rows = executor(retrieval.CANDIDATE_SQL, params)
+    assert any(r["outdoor_exposure"] is None for r in rows), (
+        "야외 노출을 모르는 POI가 우천 하드컷에서 통째로 빠졌다"
+    )
 
 
 def test_null_business_hours_are_not_dropped(executor, query):

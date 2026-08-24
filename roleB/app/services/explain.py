@@ -48,12 +48,19 @@ def template_reason(
     terms: Mapping[str, float],
 ) -> str:
     """근거가 있는 항만 골라 문장으로 만든다. 근거가 없으면 지어내지 않는다."""
-    outdoor = float(poi.get("outdoor_exposure", 0.0) or 0.0)
+    # 점수는 미관측을 0.0(중립)으로 접지만, **말은 그렇게 하면 안 된다.**
+    # "실내 위주로 골랐습니다"는 관측을 주장하는 문장이고, A의 A3-2는 리뷰에
+    # 근거가 없으면 이 컬럼을 NULL로 남긴다. 모르는 것을 실내라고 말하는 순간
+    # 근거 없는 단정이 되고, 그건 이 서비스가 제일 하면 안 되는 종류다.
+    raw_outdoor = poi.get("outdoor_exposure")
+    outdoor_known = raw_outdoor is not None
+    outdoor = float(raw_outdoor) if outdoor_known else 0.0
+    indoor_confirmed = outdoor_known and outdoor < INDOOR_EXPOSURE
     parts: list[str] = []
 
-    if float(wx.get("rain_prob", 0.0) or 0.0) > HEAVY_RAIN and outdoor < INDOOR_EXPOSURE:
+    if float(wx.get("rain_prob", 0.0) or 0.0) > HEAVY_RAIN and indoor_confirmed:
         parts.append("비 예보가 있어 실내 공간 위주로 골랐습니다")
-    if int(wx.get("pm25_grade", 1) or 1) >= 3 and outdoor < INDOOR_EXPOSURE:
+    if int(wx.get("pm25_grade", 1) or 1) >= 3 and indoor_confirmed:
         parts.append("미세먼지 나쁨 예보를 반영해 실내를 우선했습니다")
     if terms.get("segment_affinity", 0.0) > STRONG_TERM:
         parts.append("이 시간대에 또래 방문 비중이 높은 곳입니다")
@@ -194,9 +201,13 @@ def build_prompt(
     lines.append("\n[후보]")
     for c in candidates:
         tags = ", ".join(c.get("atmosphere_tags") or [])
+        # `None`을 그대로 흘리면 모델이 0으로 읽고 "실내라서 좋다"를 지어낸다.
+        # 모른다는 것은 명시적으로 모른다고 적는다.
+        exposure = c.get("outdoor_exposure")
+        exposure_text = "미상" if exposure is None else f"{float(exposure):.1f}"
         lines.append(
             f"- {c['poi_id']} | {c.get('name')} | {c.get('category_l2') or ''} | "
-            f"{int(c.get('dist_m') or 0)}m | 야외노출 {c.get('outdoor_exposure')} | {tags}"
+            f"{int(c.get('dist_m') or 0)}m | 야외노출 {exposure_text} | {tags}"
         )
 
     lines.append("\n[인용 후보] (이 문장들만 quote에 쓸 수 있다)")

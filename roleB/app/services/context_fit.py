@@ -26,6 +26,7 @@ from app.constants import (
     EXTREME_TEMP_COEF,
     HEAT_FEELS_LIKE,
     IS_CLEAR_RAIN_PROB,
+    OUTDOOR_EXPOSURE_UNKNOWN,
     PLEASANT_BONUS,
     PLEASANT_RANGE,
     PM_BAD_GRADE,
@@ -47,9 +48,18 @@ def context_fit(
 
     wx 키: rain_prob / pm25_grade / feels_like / visit_hour / sunset_hour
     (없는 키는 중립값으로 본다 — 날씨를 모른다고 추천이 멈추면 안 된다)
+
+    `outdoor_exposure`가 None이면 `OUTDOOR_EXPOSURE_UNKNOWN`으로 본다.
     """
     s = 1.0
-    e = float(outdoor_exposure or 0.0)
+    # NULL = "리뷰에 야외 근거가 없다"이지 "완전 실내다"가 아니다. 규칙을 여기서
+    # 즉흥으로 정하지 않고 상수 하나에서 가져온다 — 후보 SQL도 같은 값을 쓴다.
+    # 지금 값(0.0)에서는 모든 계수가 1로 접혀 결과가 정확히 중립(1.0)이 된다.
+    e = (
+        OUTDOOR_EXPOSURE_UNKNOWN
+        if outdoor_exposure is None
+        else float(outdoor_exposure)
+    )
     rain_prob = float(wx.get("rain_prob", 0.0) or 0.0)
     pm25_grade = int(wx.get("pm25_grade", 1) or 1)
     feels_like = float(wx.get("feels_like", 20.0))

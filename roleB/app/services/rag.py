@@ -68,7 +68,12 @@ FROM (
     SELECT rc.poi_id, rc.text, rc.source,
            row_number() OVER (
                PARTITION BY rc.poi_id
-               ORDER BY rc.is_sponsored, rc.written_at DESC NULLS LAST
+               -- A의 A3-2는 written_at을 채우지 않는다(리뷰 JSONL의 postdate가
+               -- INSERT에 안 실린다). 전 건 NULL이면 이 정렬은 동점이 되고,
+               -- 그러면 같은 요청이 요청마다 다른 문장을 인용할 수 있다.
+               -- chunk_id로 동점을 끊어 재현 가능하게 만든다.
+               ORDER BY rc.is_sponsored, rc.written_at DESC NULLS LAST,
+                        rc.chunk_id
            ) AS rn
     FROM review_chunk rc
     WHERE rc.poi_id = ANY(%(poi_ids)s)
