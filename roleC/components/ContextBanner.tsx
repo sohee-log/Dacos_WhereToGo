@@ -45,7 +45,7 @@ export default function ContextBanner({ context }: ContextBannerProps) {
           <p className="flex items-start gap-1">
             <span>☔</span>
             <span>
-              <strong>"날씨를 보고 실내 위주로 골랐어요!"</strong> 현재 용산구에 비 소식이 확인되어 동선 이동이 최소화되는 <strong>쾌적한 실내 공간 및 대피소형 핫플</strong>을 최상단에 배치했습니다.
+              <strong>&ldquo;날씨를 보고 실내 위주로 골랐어요!&rdquo;</strong> 현재 용산구에 비 소식이 확인되어 동선 이동이 최소화되는 <strong>쾌적한 실내 공간 및 대피소형 핫플</strong>을 최상단에 배치했습니다.
             </span>
           </p>
         ) : (

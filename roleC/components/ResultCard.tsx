@@ -77,7 +77,7 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
           <span className="text-[10px] font-bold text-slate-400 block">리뷰 근거 (Evidence)</span>
           {place.evidence.map((ev, idx) => (
             <blockquote key={idx} className="text-[11px] text-slate-500 border-l-2 border-slate-200 pl-2 leading-relaxed italic">
-              "{ev.text}" <span className="text-[9px] text-slate-400 not-italic">({ev.source})</span>
+              &ldquo;{ev.text}&rdquo; <span className="text-[9px] text-slate-400 not-italic">({ev.source})</span>
             </blockquote>
           ))}
         </div>

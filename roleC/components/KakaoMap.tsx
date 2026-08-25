@@ -4,6 +4,16 @@
 import { useEffect } from 'react';
 import Script from 'next/script';
 
+// window.kakao 타입을 한 곳에서만 선언 — 이렇게 하면 매 줄마다
+// @ts-ignore / @ts-expect-error를 반복할 필요가 없다.
+// (참고: 카카오맵 SDK 공식 타입이 필요하면 나중에 @types/kakao-maps-sdk 같은
+// 패키지로 교체하는 게 더 안전하다. 지금은 any로 최소 억제만 해둔다.)
+declare global {
+  interface Window {
+    kakao: any;
+  }
+}
+
 interface KakaoMapProps {
   places: Array<{
     poi_id: string;
@@ -26,34 +36,26 @@ export default function KakaoMap({ places }: KakaoMapProps) {
   }
 
   const initMap = () => {
-    if (!window || !// @ts-ignore
-      window.kakao || !window.kakao.maps) return;
+    if (!window.kakao || !window.kakao.maps) return;
 
-    // @ts-ignore
     window.kakao.maps.load(() => {
       const container = document.getElementById('kakao-map');
       if (!container || !places || places.length === 0) return;
 
       const centerPlace = places[0];
-      
-      // @ts-ignore
+
       const options = {
-        // @ts-ignore
         center: new window.kakao.maps.LatLng(centerPlace.lat, centerPlace.lng),
         level: 4,
       };
 
-      // @ts-ignore
       const map = new window.kakao.maps.Map(container, options);
 
       // 마커들을 모아서 지도가 한눈에 보이게 반경을 재조정하기 위한 객체
-      // @ts-ignore
       const bounds = new window.kakao.maps.LatLngBounds();
 
       places.forEach((place) => {
-        // @ts-ignore
         const markerPosition = new window.kakao.maps.LatLng(place.lat, place.lng);
-        // @ts-ignore
         const marker = new window.kakao.maps.Marker({
           position: markerPosition,
         });
@@ -68,10 +70,10 @@ export default function KakaoMap({ places }: KakaoMapProps) {
 
   // 💡 데이터가 나중에 로드되어 들어왔을 때(리렌더링 시) 지도를 다시 강제로 그리도록 설정
   useEffect(() => {
-    // @ts-ignore
     if (window.kakao && window.kakao.maps) {
       initMap();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places]);
 
   return (
