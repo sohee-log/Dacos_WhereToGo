@@ -69,13 +69,15 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
         const moodQuery = collectedMoods.join(',');
         window.location.href = `/recommend?user_id=${data.user_id}&mood=${encodeURIComponent(moodQuery)}`;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       if (err instanceof ApiError && err.status === 422) {
         // 여기가 뜨면 필드명/필수값이 openapi.yaml과 다시 어긋난 것이다
         setError('입력값을 확인해주세요. (문항이 서버 규격과 맞지 않습니다)');
-      } else {
+      } else if (err instanceof Error) {
         setError(err.message || '오류가 발생했습니다.');
+      } else {
+        setError('오류가 발생했습니다.');
       }
     } finally {
       setLoading(false);

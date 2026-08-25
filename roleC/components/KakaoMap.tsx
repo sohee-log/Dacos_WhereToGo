@@ -4,15 +4,8 @@
 import { useEffect } from 'react';
 import Script from 'next/script';
 
-// window.kakao 타입을 한 곳에서만 선언 — 이렇게 하면 매 줄마다
-// @ts-ignore / @ts-expect-error를 반복할 필요가 없다.
-// (참고: 카카오맵 SDK 공식 타입이 필요하면 나중에 @types/kakao-maps-sdk 같은
-// 패키지로 교체하는 게 더 안전하다. 지금은 any로 최소 억제만 해둔다.)
-declare global {
-  interface Window {
-    kakao: any;
-  }
-}
+// window.kakao 타입은 lib/global.d.ts (프로젝트 루트 global.d.ts)에서 이미
+// 전역으로 선언되어 있다 — 여기서 다시 선언하지 않는다 (중복 방지).
 
 interface KakaoMapProps {
   places: Array<{
