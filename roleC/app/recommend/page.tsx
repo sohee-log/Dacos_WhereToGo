@@ -104,6 +104,7 @@ function RecommendContent() {
   }, [userId, purpose, partySize, budgetBand, visitAt]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 최초 데이터 로드 패턴
     fetchRecommend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);

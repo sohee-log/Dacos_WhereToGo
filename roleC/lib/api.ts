@@ -121,8 +121,12 @@ export async function postFeedback(payload: FeedbackRequest): Promise<void> {
   }
 }
 
-/** GET /api/poi/{id} — 상세. reviews 최대 5건, 협찬 글은 뒤로 밀려서 온다. */
-export async function getPoi(poiId: string): Promise<any> {
+/**
+ * GET /api/poi/{id} — 상세. reviews 최대 5건, 협찬 글은 뒤로 밀려서 온다.
+ * ⚠️ 정확한 응답 필드가 openapi.yaml에서 아직 확인 안 됨 — 틀린 타입을 지어내느니
+ * unknown으로 두고, 실제로 쓰는 곳에서 확인된 필드만 좁혀서 쓸 것.
+ */
+export async function getPoi(poiId: string): Promise<unknown> {
   return request(`/api/poi/${encodeURIComponent(poiId)}`);
 }
 
