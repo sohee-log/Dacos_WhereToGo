@@ -5,6 +5,7 @@ import os
 import re
 import time
 from pathlib import Path
+from psycopg.rows import dict_row
 
 import requests
 from dotenv import load_dotenv
@@ -24,7 +25,7 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL")
 LLM_MODEL = os.getenv("LLM_MODEL")
 
 REVIEW_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "review_candidates_raw.jsonl"
+    Path(__file__).resolve().parents[1] / "data" / "review_candidates_merged.jsonl"
 )
 
 
@@ -620,41 +621,34 @@ def calculate_confidence(
 
 def get_pending_pois(
     conn,
-    limit,
+    limit=None,
 ):
+    query = """
+        SELECT
+            poi_id,
+            name,
+            dong,
+            category_l1,
+            category_l2,
+            mention_count
+        FROM poi
+        WHERE tier = 1
+          AND attr_extracted_at IS NULL
+        ORDER BY poi_id
+    """
 
-    with conn.cursor() as cur:
+    params = ()
 
+    if limit is not None:
+        query += "\nLIMIT %s"
+        params = (limit,)
+
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
-            SELECT
-                poi_id,
-                name,
-                dong,
-                category_l1,
-                category_l2
-            FROM poi
-            WHERE tier = 1
-              AND attr_extracted_at IS NULL
-            ORDER BY
-                mention_count DESC NULLS LAST
-            LIMIT %s
-            """,
-            (limit,),
+            query,
+            params,
         )
-
-        rows = cur.fetchall()
-
-    return [
-        {
-            "poi_id": row[0],
-            "name": row[1],
-            "dong": row[2],
-            "category_l1": row[3],
-            "category_l2": row[4],
-        }
-        for row in rows
-    ]
+        return cur.fetchall()
 
 
 def save_result(
@@ -787,7 +781,7 @@ def main():
     parser.add_argument(
         "--limit",
         type=int,
-        default=50,
+        default=None,
     )
 
     parser.add_argument(
