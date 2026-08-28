@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
 
+from app.constants import OUTDOOR_EXPOSURE_UNKNOWN
 from app.services import rag, retrieval
 
 KST = timezone(timedelta(hours=9))
@@ -36,6 +37,41 @@ SEQ_SCAN_TOLERANCE = 1_000
 
 _SEQ_SCAN = re.compile(r"Seq Scan on (\w+)")
 
+# SQL 안의 `%(이름)s` 를 뽑는다. **여기 적힌 파라미터 목록을 손으로 관리하지 않는다.**
+# retrieval의 SQL에 파라미터가 하나 늘었는데 이 파일이 안 따라가서 B6-2가
+# 통째로 못 돌고 있었다(2026-08-28에 발견). 도구가 도구 대상보다 먼저 죽으면
+# "점검했다"는 말만 남는다.
+_PARAM = re.compile(r"%\((\w+)\)s")
+
+
+def required_params(sql: str) -> set[str]:
+    return set(_PARAM.findall(sql))
+
+
+def missing_params(sql: str, params: dict) -> list[str]:
+    return sorted(required_params(sql) - set(params))
+
+
+def _init_marks() -> dict[str, str]:
+    """Windows 기본 콘솔은 cp949라 이모지에서 죽는다.
+
+    실제로 그랬다 — EXPLAIN 실패를 `❌`로 출력하려다 UnicodeEncodeError가 나서
+    **실패 원인이 안 보였다.** check_data_readiness와 같은 규약으로 맞춘다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")     # type: ignore[union-attr]
+        except (AttributeError, OSError, ValueError):
+            pass
+    try:
+        "✅⚠️❌".encode(sys.stdout.encoding or "utf-8")
+        return {"ok": "✅", "warn": "⚠️", "bad": "❌"}
+    except (UnicodeEncodeError, LookupError):
+        return {"ok": "[ OK ]", "warn": "[WARN]", "bad": "[FAIL]"}
+
+
+MARKS = _init_marks()
+
 CHECKS = [
     (
         "후보 생성 (poi + PostGIS)",
@@ -45,6 +81,9 @@ CHECKS = [
             "visit_at": datetime.now(KST), "party_size": 2, "budget_band": 3,
             "rain_prob": 0.1, "pm25_grade": 2, "conf_min": 0.30,
             "limit": 500, "user_id": "u_plan_probe",
+            # 후보 SQL과 context_fit이 함께 쓰는 상수. 엔진에서 가져온다 —
+            # 여기 숫자를 적으면 필터와 점수가 다른 세계를 보게 된다.
+            "outdoor_unknown": OUTDOOR_EXPOSURE_UNKNOWN,
         },
         "idx_poi_geom",
     ),
@@ -103,10 +142,21 @@ def main() -> int:
         print(f"poi {cur.fetchone()['n']}행 기준\n")
 
         for title, sql, params, want_index in CHECKS:
+            gap = missing_params(sql, params)
+            if gap:
+                # SQL이 요구하는 파라미터가 여기 없다. 그냥 EXPLAIN을 던지면
+                # psycopg 예외로 나오는데 그러면 "쿼리가 느리다"와 구분이 안 된다.
+                print(
+                    f"{MARKS['bad']} {title}: 파라미터 누락 {gap}\n"
+                    "      retrieval/rag의 SQL이 바뀌었는데 이 파일이 안 따라갔다.\n"
+                    "      CHECKS의 params에 위 키를 추가한다.\n"
+                )
+                failed += 1
+                continue
             try:
                 plan = explain(cur, sql, params)
             except Exception as exc:
-                print(f"❌ {title}: EXPLAIN 실패 — {exc}\n")
+                print(f"{MARKS['bad']} {title}: EXPLAIN 실패 - {exc}\n")
                 failed += 1
                 conn.rollback()
                 continue
@@ -119,16 +169,16 @@ def main() -> int:
             heavy = heavy_seq_scans(cur, plan)
             index_ok = want_index is None or want_index in plan
 
-            mark = "✅"
+            mark = MARKS["ok"]
             notes: list[str] = []
             if heavy:
-                mark = "❌"
+                mark = MARKS["bad"]
                 failed += 1
                 notes.append(
                     "전체 스캔: " + ", ".join(f"{t}({n:,}행)" for t, n in heavy)
                 )
             elif not index_ok:
-                mark = "⚠️"
+                mark = MARKS["warn"]
                 notes.append(f"기대 인덱스 {want_index}를 쓰지 않았다")
             elif want_index:
                 notes.append(f"{want_index} 사용")
@@ -148,10 +198,10 @@ def main() -> int:
 
     print()
     if failed:
-        print(f"❌ 규모 있는 테이블이 전체 스캔으로 떨어졌다 ({failed}건). "
+        print(f"{MARKS['bad']} 규모 있는 테이블이 전체 스캔으로 떨어졌다 ({failed}건). "
               "규모가 커지면 300ms를 넘긴다")
         return 1
-    print(f"✅ {SEQ_SCAN_TOLERANCE:,}행을 넘는 테이블은 전부 인덱스를 탄다")
+    print(f"{MARKS['ok']} {SEQ_SCAN_TOLERANCE:,}행을 넘는 테이블은 전부 인덱스를 탄다")
     return 0
 
 

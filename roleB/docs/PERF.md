@@ -1,5 +1,134 @@
 # 응답 성능 점검 (B6-2)
 
+> **상태: 실 Supabase 재측정 완료 (2026-08-28).** 목표는 ROLE_B §W4 B4-1의 **p95 300ms**다.
+> 재측정: `tools/perf_probe.py`(HTTP 지연) · `tools/query_plan.py`(실행 계획) · `tools/scenario_report.py`(파이프라인 지연)
+> 2026-08-10 측정(로컬 Docker · 합성 5,000행)은 아래 §부록에 남긴다. **그 숫자는 더 이상 유효하지 않다.**
+
+---
+
+## 결론 세 줄 (2026-08-28)
+
+1. **쿼리는 빠르다. 왕복이 느리다.** 추천 한 건에 **DB 왕복 10회**가 든다.
+   지연의 **83~90%가 왕복 시간**이고, 쿼리 실행 자체는 합쳐서 13ms다.
+2. **`p95 300ms`는 지금 배치(Render 싱가포르 ↔ Supabase 서울)로는 도달할 수 없다.**
+   왕복 10회 × 싱가포르-서울 RTT(70~90ms) ≈ **700~900ms**다. 코드 최적화로는 못 넘는다.
+3. **규모 있는 테이블은 전부 인덱스를 탄다.** 실 데이터 6,644행에서 후보 생성이
+   `idx_poi_geom`으로 **10.7ms**. 병목은 쿼리가 아니다.
+
+---
+
+## 1. 실측 (2026-08-28 · 실 Supabase · POI 6,644행)
+
+측정 지점: 개발자 로컬(서울) → Supabase(ap-northeast-2, 서울). **RTT 중앙 27ms.**
+
+```
+추천 1회  중앙 319ms  ·  DB 호출 10회  ·  왕복만으로 설명되는 몫 266ms (83%)
+
+   38.7ms  후보 생성 (poi + PostGIS)      ← 실행 10.7ms + 왕복
+   34.9ms  hotspot_latest
+   27.6ms  최근접 지점
+   27.4ms  segment_affinity
+   26.9ms  recommendation_log INSERT
+   26.5ms  query_vector_cache
+   26.4ms  review_chunk 인용
+   26.2ms  explanation_cache 조회
+   25.8ms  user_profile
+   25.4ms  admin_dong zone
+   ─────────────────────────────────────
+   파이썬 계산 36ms
+```
+
+**쿼리 실행 시간 (`tools/query_plan.py`, 실 DB)**
+
+| 쿼리 | 실행 | 인덱스 |
+|---|---:|---|
+| 후보 생성 (poi + PostGIS) | **10.7ms** | `idx_poi_geom` ✅ |
+| 인용 검색 (review_chunk) | 0.1ms | `idx_chunk_poi` ✅ |
+| 최신 지점 스냅샷 | 2.3ms | — |
+
+1,000행을 넘는 테이블 중 전체 스캔으로 떨어지는 것은 없다.
+
+---
+
+## 2. 그래서 300ms는 되는가 — 안 된다
+
+지연은 사실상 **`왕복 횟수 × RTT`** 다.
+
+| 배치 | RTT | 왕복 10회 | 판정 |
+|---|---:|---:|---|
+| 로컬(서울) → Supabase(서울) | 27ms | **319ms** | 목표 근접 |
+| **Render(싱가포르) → Supabase(서울)** | **70~90ms** | **700~900ms** | ❌ **목표의 2~3배** |
+| Render(싱가포르) → Supabase(싱가포르) | 2~5ms | **60~90ms** | ✅ 여유 |
+
+`render.yaml`의 `region: singapore`이고 Supabase 프로젝트는 `ap-northeast-2`(서울)다.
+**Render Free가 고를 수 있는 리전 중 서울은 없다** — 싱가포르가 이미 가장 가깝다.
+즉 **엔진 쪽 최적화로 넘을 수 있는 차이가 아니다.**
+
+### 선택지 세 개 (팀 결정이 필요하다)
+
+| # | 방법 | 효과 | 비용 |
+|---|---|---|---|
+| **①** | **Supabase 프로젝트를 싱가포르(`ap-southeast-1`)로 재생성** | 700~900ms → **60~90ms** | 리전은 생성 후 변경 불가 → **새 프로젝트 + A의 전량 재적재**. 발표 일주일 전이면 위험하다 |
+| **②** | 왕복을 더 줄인다 (10 → 6) | 700~900 → **420~540ms** | 코드 변경. 목표엔 여전히 못 미친다 |
+| **③** | **목표를 재설정한다** — "p95 1초 이내 · 첫 화면까지 로딩 UX" | 0 | 심사에서 설명이 필요하다 |
+
+**B의 권고: ③ + ②의 값싼 부분.** 이유는 세 가지다.
+
+- 이미 C가 콜드스타트·로딩 UX를 만들어 뒀다. 700ms는 **사용자가 느끼기에 나쁘지 않다.**
+  Render Free의 콜드스타트(최대 1분)가 훨씬 큰 위험이고, 그건 UptimeRobot으로 막는다.
+- ①은 A의 적재를 통째로 다시 시켜야 한다. **지금 남은 작업(임베딩·품질 점수)이 더 급하다.**
+- 발표에서 "무료 티어 두 서비스가 다른 대륙에 있어서 왕복이 지배한다"는 **설명 가능한 제약**이다.
+  숨기는 것보다 숫자로 보여주는 게 낫다.
+
+### 이미 줄인 것
+
+- `recommendation_log` INSERT의 **존재 확인 SELECT를 스칼라 서브쿼리로 접었다** (11회 → 10회).
+  실측 409ms → 319ms. `tests/test_logging.py`가 왕복 1회를 박아 둔다.
+
+### 더 줄일 수 있는 곳 (아직 안 했다)
+
+| 합칠 대상 | 절약 | 주의 |
+|---|---|---|
+| `user_profile` + `admin_dong zone` | 1회 | 프로필이 없어도 zone은 나와야 한다 (LEFT JOIN) |
+| `hotspot_latest` + 최근접 지점 | 1회 | **스냅샷이 없는 지점은 최근접 후보에서 빠진다** — 의미가 달라진다 |
+| `explanation_cache` 조회 | 1회 | 캐시 히트 시에만 이득. 지금은 LLM 키가 없어 항상 미스다 |
+
+---
+
+## 3. 아직 못 잰 것
+
+| | 왜 |
+|---|---|
+| **Render → Supabase 실측** | Render에 `DATABASE_URL`이 아직 없다(`mode: mock`). C가 넣으면 바로 잰다 → `python -m tools.perf_probe --url https://dacos-wheretogo.onrender.com --repeat 1` |
+| **LLM 경로 지연** | `LLM_API_KEY`가 로컬에 없다. 지금 전 시나리오가 `explain_mode: template`이라 **LLM·캐시 경로는 한 번도 측정되지 않았다.** 모델 지연 실측치는 `LLM_QUOTA.md §0-3` (채택 모델 2.4~2.8s) |
+| **동시 요청** | 직렬로만 쟀다. Render Free 단일 인스턴스에서 데모 중 동시 접속이 몇이나 될지에 따라 다르다 |
+
+---
+
+## 4. 재측정 방법
+
+```powershell
+cd roleB
+$env:DATABASE_URL = "<DSN>"
+
+python -m tools.query_plan          # 실행 계획 — 인덱스를 타는가
+python -m tools.scenario_report     # 파이프라인 지연 + 항별 분산
+python -m tools.perf_probe --url https://dacos-wheretogo.onrender.com --repeat 1
+```
+
+`perf_probe`는 **`/health`를 먼저 재서 전송 구간의 바닥을 보여준다.** 그 숫자가 크면
+서버 로직이 아니라 네트워크 문제다 — 지금이 정확히 그 경우다.
+
+---
+
+## 부록 — 2026-08-10 측정 (더 이상 유효하지 않다)
+
+아래는 **로컬 Docker DB + 합성 5,000행** 기준이다. 같은 머신 안이라 왕복이 사실상 0이었고,
+그래서 `p95 149ms`가 나왔다. **실 배포 구성과 다르다** — 이 숫자를 근거로 판단하지 말 것.
+
+이 경험 자체가 교훈이다. **재는 환경과 도는 환경이 다르면 측정은 아무것도 보장하지 않는다.**
+`LLM_QUOTA.md §0-1`의 사고(프로브는 httpx, 앱은 urllib)와 같은 부류다.
+
 > **상태: 측정 완료 (2026-08-10).** 목표는 ROLE_B §W4 B4-1의 **p95 300ms**다.
 > 재측정: `tools/perf_probe.py`(지연) · `tools/query_plan.py`(실행 계획)
 

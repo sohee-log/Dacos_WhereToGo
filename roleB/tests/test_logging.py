@@ -71,6 +71,9 @@ def test_snapshot_is_json_serializable():
 
 class FakeExec:
     def __init__(self, user_exists: bool = True, insert_result=None, fail: bool = False):
+        # user_exists 는 이제 SQL 안(스칼라 서브쿼리)에서 판정된다. 가짜 executor로는
+        # 재현할 수 없어서 이 인자는 계약 문서용으로만 남긴다 — 실제 검증은
+        # tests/test_live_db.py 가 한다.
         self.user_exists = user_exists
         self.insert_result = insert_result if insert_result is not None else [{"log_id": 55123}]
         self.fail = fail
@@ -80,8 +83,6 @@ class FakeExec:
         self.calls.append((sql, dict(params)))
         if self.fail:
             raise RuntimeError("DB가 흔들렸다")
-        if "FROM user_profile" in sql:
-            return [{"?column?": 1}] if self.user_exists else []
         return self.insert_result
 
 
@@ -100,12 +101,29 @@ def test_log_id_is_returned():
     assert _write(FakeExec()) == 55123
 
 
+def test_로그_기록은_왕복_한_번이다():
+    """Render(싱가포르)-Supabase(서울) 사이에서 왕복 한 번이 70~90ms다.
+
+    추천 한 건의 지연 90%가 왕복 횟수에서 나온다(docs/PERF.md). 예전에는
+    존재 확인 SELECT + INSERT 로 두 번이었다. 다시 두 번으로 돌아가지 않게 박는다.
+    """
+    ex = FakeExec()
+    _write(ex)
+    assert len(ex.calls) == 1, [c[0][:40] for c in ex.calls]
+
+
 def test_unknown_user_is_nulled_not_rejected():
-    """user_id는 user_profile을 참조한다. 온보딩을 건너뛴 사용자도 로그는 남아야 한다."""
-    ex = FakeExec(user_exists=False)
-    assert _write(ex) == 55123
-    insert_params = ex.calls[-1][1]
-    assert insert_params["user_id"] is None
+    """user_id는 user_profile을 참조한다. 온보딩을 건너뛴 사용자도 로그는 남아야 한다.
+
+    판정을 SQL 안으로 옮겼다 — 프로필이 없으면 스칼라 서브쿼리가 NULL을 준다.
+    파이썬은 user_id를 그대로 넘긴다. 실제 NULL 처리는 test_live_db 가 확인한다.
+    """
+    ex = FakeExec()
+    _write(ex)
+    sql, params = ex.calls[-1]
+    assert params["user_id"] == "u_1"          # 파이썬은 판정하지 않는다
+    assert "SELECT user_id FROM user_profile" in sql
+    assert "INSERT INTO recommendation_log" in sql
 
 
 def test_known_user_is_kept():
