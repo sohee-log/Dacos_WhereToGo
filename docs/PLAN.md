@@ -325,9 +325,9 @@ CREATE TABLE segment_affinity (
   commercial_area_id  TEXT,
   category_l2         TEXT,
   gender              CHAR(1),                 -- M / F
-  age_band            SMALLINT,                -- 20, 25, 30 ... (5세 단위)
+  age_band            SMALLINT,                -- 10, 20, 30 ... 60 (10년 단위)
   dow_type            SMALLINT,                -- 0=평일 1=주말
-  hour_band           SMALLINT,                -- 0~5 (4시간 단위)
+  hour_band           SMALLINT,                -- 0~5 (원본의 불균등 6구간)
   affinity            REAL,                    -- 0~1 정규화 소비강도
   sample_weight       REAL,                    -- 원본 표본 규모
   PRIMARY KEY (commercial_area_id, category_l2, gender, age_band, dow_type, hour_band)
