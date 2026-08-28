@@ -1,41 +1,45 @@
 // lib/types.ts
-import { PURPOSES, ATMOSPHERES } from "./constants"; // 1. ATMOSPHERES 추가
+//
+// API 계약 타입은 **손으로 쓰지 않는다.** roleB/openapi.yaml에서 생성한
+// `./api-types`가 원본이고, 이 파일은 거기에 없는 화면 전용 타입만 갖는다.
+//
+//   생성:  cd roleB && python -m tools.gen_ts_types
+//   검증:  roleB/tests/test_ts_contract.py (CI에서 돈다)
+//
+// 손으로 베껴 쓰던 시절 POST /api/feedback 이 전부 422였는데, 화면은 멀쩡하고
+// recommendation_log만 비어 있어서 아무도 몰랐다. 그래서 생성으로 바꿨다.
+import type { ApiErrorBody } from './api-types';
 
-export type Purpose = typeof PURPOSES[number];
-export type Atmosphere = typeof ATMOSPHERES[number]; // 2. 분위기 타입 추가
+export type {
+  Purpose,
+  Atmosphere,
+  CongestLevel,
+  ExplainMode,
+  Location,
+  ApiErrorBody,
+  OnboardingRequest,
+  Context,
+  RecommendRequest,
+  ScoreBreakdown,
+  Evidence,
+  Recommendation,
+  RecommendResponse,
+  FeedbackRequest,
+  PoiDetail,
+} from './api-types';
 
-// 3. 온보딩 요청/응답 타입 추가 (Form 연동용)
-export interface OnboardingRequest {
-  gender: 'M' | 'F';
-  age_band: number;
-  atmosphere_tags: Atmosphere[]; 
-  purpose_tags: Purpose[];      
-  budget_band: number;
-  weather_sensitivity: number;
-}
-
+// 온보딩 응답은 스키마가 인라인이라(openapi의 /api/onboarding 200) 생성 대상이 아니다.
 export interface OnboardingResponse {
   user_id: string;
 }
 
-// 클릭 → 선택 → 만족도를 여러 번에 나눠 보낼 수 있다 (핸드오프 §3-4)
-// 빈 값은 서버가 덮어쓰지 않으므로 매번 전체를 다시 보낼 필요 없음
-export interface FeedbackRequest {
-  log_id: number;
-  poi_id?: string;
-  clicked?: boolean;
-  selected?: boolean;
-  satisfaction?: number; // 1~5
-}
+// 날씨 출처. Context['weather_source']에서 null을 걷어낸 것 — ?debug=1 화면에서 쓴다.
+export type WeatherSource = NonNullable<
+  import('./api-types').Context['weather_source']
+>;
 
-// 표준 에러 응답 (422 / 429 / 503 / 404)
-// 429는 code:"rate_limited" + Retry-After 헤더가 함께 온다 (핸드오프 §2-2)
-export interface ApiErrorBody {
-  detail: string;
-  code?: string;
-}
-
-// api.ts가 던지는 에러 — 상태코드별로 화면 분기하기 위해 status를 들고 있다
+// api.ts가 던지는 에러 — 상태코드별로 화면을 분기하려고 status를 들고 있다.
+// 422 = 계약 위반(이쪽 타입을 먼저 의심한다) / 429 = 레이트 리밋 / 503 = DB 미가용
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -48,62 +52,3 @@ export class ApiError extends Error {
     this.retryAfter = retryAfter;
   }
 }
-
-// 추천 요청 (Request) 타입
-export type RecommendRequest = {
-  user_id: string;
-  purpose: Purpose;
-  party_size: number;
-  budget_band: 1 | 2 | 3 | 4;
-  location: { lat: number; lng: number };
-  visit_at: string; // ISO8601 +09:00
-};
-
-// weather_source: 값 하나가 늘었다 (핸드오프 §10-1) — citydata_fcst
-// citydata: 실황(사실) / citydata_fcst: citydata 24h예보(확률) /
-// kma, kma+citydata: 기상청 단기예보(확률) / mock: 소스 없음(가짜)
-export type WeatherSource =
-  | "citydata"
-  | "citydata_fcst"
-  | "kma"
-  | "kma+citydata"
-  | "mock";
-
-// 추천 결과 (Response) 타입
-export type RecommendResponse = {
-  context: {
-    weather: string; // "비 60%"
-    pm25_grade: number; // 1~4
-    feels_like: number;
-    hotspot: string | null; // "이태원 관광특구"
-    congest_now: string | null;
-    congest_forecast_at_visit: string | null;
-    age_mix_top: string | null; // "20대 31%" | "10대 미만 12%" | "70대 이상 9%"
-    weather_source?: WeatherSource; // ?debug=1 화면용, 화면에 그릴 필요는 없음
-    sunset?: string; // "19:42" — 분 단위까지 온다
-  };
-  results: Array<{
-    poi_id: string;
-    name: string;
-    category: string;
-    lat: number; 
-    lng: number;
-    distance_m: number;
-    score: number;
-    score_breakdown: {
-      segment: number; 
-      purpose: number; 
-      taste: number;
-      context: number; 
-      quality: number; 
-      distance: number;
-      live_segment?: number; // 없을 수 있음
-      crowd?: number;        // 없을 수 있음
-    };
-    reason: string;
-    evidence: Array<{ text: string; source: string }>;
-    is_exploration: boolean;
-    explain_mode: "llm" | "cache" | "template";
-  }>;
-  log_id: number;
-};

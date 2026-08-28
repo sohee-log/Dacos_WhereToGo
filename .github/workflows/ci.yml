@@ -69,6 +69,13 @@ jobs:
       - name: Test
         run: pytest -q
 
+      # roleC/lib/api-types.ts는 openapi.yaml에서 생성한다. openapi만 고치고
+      # 생성기를 안 돌리면 C의 타입이 조용히 낡는다 — 손으로 베껴 쓰던 시절
+      # POST /api/feedback이 몇 주 동안 422였다(BRIEF 2026-08-28 §1).
+      # pytest에도 같은 대조가 있지만, 실패 원인이 한 줄로 보이게 따로 둔다.
+      - name: TS contract in sync
+        run: python -m tools.gen_ts_types --check
+
   web:
     name: roleC lint + build
     runs-on: ubuntu-latest

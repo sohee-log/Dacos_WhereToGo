@@ -31,9 +31,11 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.constants import (
+    AGE_BANDS,
     ATMOSPHERE_TAGS,
     ATTR_CONFIDENCE_RELAXED,
     PURPOSE_TAGS,
+    SEGMENT_HOUR_BAND_STARTS,
     W,
 )
 from app.services.live_signals import SNAPSHOT_STALE_AFTER
@@ -145,13 +147,25 @@ CHECKS: list[Check] = [
         # 결과는 전 건 NULL이고 항은 전 POI 중립(0.5)이다 — 즉 기여 0인데
         # 도구는 "살아 있음"이라고 답했다. **전환 게이트의 거짓 초록불이었다.**
         # 실제로 채워지는 쪽을 센다.
+        # 조인 키(상권×업종)만 맞아도 엔진 쿼리는 0행일 수 있다. 실제 조회는
+        # gender·age_band·dow_type·hour_band까지 건다(retrieval.SEGMENT_AFFINITY_SQL).
+        # 축 하나만 어긋나도 결과는 0행이고, **그건 에러가 아니라 중립값**이다.
+        # 키만 세면 여기서 또 거짓 초록불이 나온다 — 축까지 걸고 센다.
         sql=(
             "SELECT count(DISTINCT p.poi_id) AS filled, (SELECT count(*) FROM poi) AS total"
             " FROM poi p JOIN segment_affinity s"
             "   ON s.commercial_area_id = p.commercial_area_id"
             "  AND s.category_l2 = p.category_l2"
+            " WHERE s.gender IN ('M','F')"
+            "   AND s.age_band = ANY(%(age_bands)s)"
+            "   AND s.dow_type IN (0,1)"
+            "   AND s.hour_band BETWEEN 0 AND 5"
         ),
-        note="상권코드×업종으로 실제 조인되는 POI 수. 0이면 개인화 근거(0.22)가 통째로 상수다",
+        note=(
+            "엔진의 조회 축(성별·연령·요일·시간대)까지 걸어서 실제로 매칭되는 POI 수. "
+            "0이면 개인화 근거(0.22)가 통째로 상수다. 행은 있는데 0이면 축이 어긋난 것 — "
+            "아래 '세그먼트 축 점검'을 본다"
+        ),
     ),
     Check(
         label="commercial_area_id (조인 키)",
@@ -501,6 +515,93 @@ def attr_extraction_progress(cur, conn, conf_min: float) -> None:
             print(f"  {MARKS['ok']} {col} 고정 어휘 위반 0건")
 
 
+# ============================================================================
+# 세그먼트 축 점검 — "행은 있는데 조회가 0행"의 원인은 거의 여기다
+# ============================================================================
+
+
+def segment_axis_audit(cur, conn) -> None:
+    """`segment_affinity`의 축 값이 엔진이 던지는 값과 같은가.
+
+    2026-08-28에 규약이 바뀌었다. 원본 상권분석 추정매출이
+    **연령 10년 단위 · 시간대 불균등 6구간**이라 엔진을 원본에 맞췄다
+    (`db/migrations/003_segment_axis.sql`). 이전 안(5세 단위 / 시//4)으로
+    적재하면 조인은 되는데 조회가 0행이 된다 — 에러가 아니라 중립값이다.
+
+    `age_band`는 CHECK 제약이 막지만, `hour_band`는 범위(0~5)가 같아서
+    **제약으로 잡히지 않는다.** 분포를 눈으로 보는 수밖에 없다.
+    """
+    try:
+        cur.execute("SELECT count(*) AS n FROM segment_affinity")
+        rows = int((cur.fetchone() or {}).get("n") or 0)
+    except Exception as exc:
+        print(f"  {MARKS['bad']} 조회 실패 — {str(exc).strip().splitlines()[0]}")
+        conn.rollback()
+        return
+
+    if rows == 0:
+        print(f"  {MARKS['bad']} 0행 — A4-3 `build_affinity.py` 미착수 (가중치 0.22 상수)")
+        return
+
+    print(f"  전체 {rows:,}행")
+
+    def _vals(column: str) -> list:
+        cur.execute(
+            f"SELECT DISTINCT {column} AS v FROM segment_affinity ORDER BY 1"  # noqa: S608
+        )
+        return [r["v"] for r in cur.fetchall()]
+
+    try:
+        ages = _vals("age_band")
+        hours = _vals("hour_band")
+        genders = _vals("gender")
+        dows = _vals("dow_type")
+    except Exception as exc:
+        print(f"  {MARKS['bad']} 축 조회 실패 — {str(exc).strip().splitlines()[0]}")
+        conn.rollback()
+        return
+
+    expected_ages = list(AGE_BANDS)
+    bad_ages = [a for a in ages if a not in expected_ages]
+    mark = MARKS["ok"] if not bad_ages else MARKS["bad"]
+    print(f"  {mark} age_band  {ages}")
+    if bad_ages:
+        print(f"      └ 규약 밖의 값 {bad_ages}. 10년 단위여야 한다 {expected_ages}")
+        if any(int(a) % 10 == 5 for a in bad_ages if isinstance(a, int)):
+            print("        5세 단위로 적재됐다 — 원본에서 10년 단위로 다시 집계한다")
+
+    expected_hours = list(range(len(SEGMENT_HOUR_BAND_STARTS)))
+    missing = [h for h in expected_hours if h not in hours]
+    mark = MARKS["ok"] if not missing else MARKS["warn"]
+    print(f"  {mark} hour_band {hours}")
+    print(
+        "      └ 밴드 경계: "
+        + " · ".join(
+            f"{b}={SEGMENT_HOUR_BAND_STARTS[b]:02d}~"
+            f"{(SEGMENT_HOUR_BAND_STARTS[b + 1] if b + 1 < len(SEGMENT_HOUR_BAND_STARTS) else 24):02d}"
+            for b in expected_hours
+        )
+    )
+    if missing:
+        print(f"        비어 있는 밴드 {missing}. 그 시간대 요청은 개인화 항이 중립으로 쉰다")
+    print("        ⚠️ `시 // 4`로 계산했으면 값 범위(0~5)는 같고 의미만 어긋난다 — 제약이 못 잡는다")
+
+    for label, got, want in (("gender", genders, ["F", "M"]), ("dow_type", dows, [0, 1])):
+        bad = [v for v in got if v not in want]
+        mark = MARKS["ok"] if not bad else MARKS["bad"]
+        print(f"  {mark} {label:<9} {got}" + (f"   ← 규약 밖 {bad}" if bad else ""))
+
+    try:
+        cur.execute(
+            "SELECT min(affinity) AS lo, max(affinity) AS hi,"
+            " count(*) FILTER (WHERE affinity IS NULL) AS nulls FROM segment_affinity"
+        )
+        r = cur.fetchone() or {}
+        print(f"  affinity 범위 {float(r['lo']):.3f} ~ {float(r['hi']):.3f} (NULL {r['nulls']}건)")
+    except Exception:
+        conn.rollback()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
@@ -521,6 +622,8 @@ def main() -> int:
         "conf_min": args.conf_min,
         "tag_rows": TAG_EMBEDDING_ROWS,
         "qv_rows": QUERY_VECTOR_ROWS,
+        # 엔진이 실제로 던지는 연령 축. 상수를 복사하지 않는다 (SNAPSHOT_STALE에서 겪었다)
+        "age_bands": list(AGE_BANDS),
     }
 
     try:
@@ -544,6 +647,9 @@ def main() -> int:
         print("\n그 밖에")
         render(SIDE_CHECKS)
         print(f"\n  {snapshot_age(cur)}")
+
+        print("\n세그먼트 축 점검 (조인은 되는데 조회가 0행이면 여기다)")
+        segment_axis_audit(cur, conn)
 
         print("\nA3-2 LLM 속성 추출 (T1 전용 · 분모가 위와 다르다)")
         attr_extraction_progress(cur, conn, args.conf_min)

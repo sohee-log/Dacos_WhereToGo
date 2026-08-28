@@ -116,6 +116,99 @@ WHERE commercial_area_id = ANY(...) AND category_l2 = ANY(...)
 5세 단위로 넣으면 **INSERT가 실패**한다. 조용한 0행보다 시끄러운 실패가 낫다.
 적재 전에 `psql "$DATABASE_URL" -f db/migrations/003_segment_axis.sql`을 한 번 돌린다.
 
+### 2-2-1. `build_affinity.py` — 집계 초안 (A4-3)
+
+축을 확정했으니 남은 건 집계다. 아래는 **원본 컬럼명만 맞추면 그대로 도는**
+초안이다. 상권분석 추정매출 CSV를 스테이징 테이블(`raw_sales`)에 올려 두고
+쓰는 것을 전제한다.
+
+**핵심은 한 줄이다 — 매출액을 넣지 말고 비중으로 정규화한다.**
+`affinity`에 `CHECK (0~1)`이 걸려 있어 원본 매출을 그대로 넣으면 INSERT가 실패한다.
+
+```sql
+INSERT INTO segment_affinity
+    (commercial_area_id, category_l2, gender, age_band, dow_type, hour_band,
+     affinity, sample_weight)
+SELECT
+    r.commercial_area_id,
+    r.category_l2,
+    r.gender,
+    r.age_band,
+    r.dow_type,
+    r.hour_band,
+    -- 같은 (상권 × 업종) 안에서의 비중. 상권 규모 차이를 여기서 지운다.
+    -- 이걸 안 하면 큰 상권의 모든 세그먼트가 무조건 높게 나온다.
+    r.sales / NULLIF(SUM(r.sales) OVER (
+        PARTITION BY r.commercial_area_id, r.category_l2
+    ), 0)                                   AS affinity,
+    r.sales_cnt                             AS sample_weight
+FROM raw_sales r
+WHERE r.sales IS NOT NULL AND r.sales > 0
+ON CONFLICT (commercial_area_id, category_l2, gender, age_band, dow_type, hour_band)
+DO UPDATE SET affinity      = EXCLUDED.affinity,
+              sample_weight = EXCLUDED.sample_weight;
+```
+
+**원본 → 축 매핑에서 조심할 것**
+
+| 원본 | 넣을 값 | 주의 |
+|---|---|---|
+| 남성/여성 매출 컬럼이 **가로로** 나뉜 형태 | `gender` `'M'`/`'F'` | 언피벗(melt)이 먼저다. 컬럼을 행으로 돌린 뒤 집계한다 |
+| `연령대_10_매출_금액` … `연령대_60_이상_매출_금액` | `age_band` 10/20/…/60 | **60대 이상은 `60`으로 접는다.** 70을 넣으면 `CHECK` 위반 |
+| `시간대_00_06_매출_금액` … `시간대_21_24_매출_금액` | `hour_band` 0…5 | 컬럼 순서대로 0~5다. **`시 // 4`로 계산하지 말 것** |
+| 주중/주말 매출 컬럼 | `dow_type` 0/1 | 토·일이 주말 |
+| 업종코드/업종명 | `category_l2` | **`poi.category_l2`와 문자열이 정확히 같아야** 조인된다. 여기서 제일 많이 깨진다 |
+
+**적재 후 자가 점검** — 엔진의 조회 축을 그대로 걸어 본다. 0행이면 축이 어긋난 것이다.
+
+```sql
+-- ① 축 값이 규약 안에 있나 (전부 0행이어야 정상)
+SELECT DISTINCT age_band  FROM segment_affinity
+EXCEPT SELECT unnest(ARRAY[10,20,30,40,50,60]);
+SELECT DISTINCT hour_band FROM segment_affinity WHERE hour_band NOT BETWEEN 0 AND 5;
+SELECT DISTINCT gender    FROM segment_affinity WHERE gender NOT IN ('M','F');
+
+-- ② 업종 문자열이 poi와 맞나 (0행이어야 정상 — 여기서 제일 많이 깨진다)
+SELECT DISTINCT category_l2 FROM segment_affinity
+EXCEPT SELECT DISTINCT category_l2 FROM poi;
+
+-- ③ 실제로 엔진 쿼리가 행을 주나 (0이면 위 셋 중 하나가 어긋난 것)
+SELECT count(DISTINCT p.poi_id) AS matched, (SELECT count(*) FROM poi) AS total
+FROM poi p
+JOIN segment_affinity s ON s.commercial_area_id = p.commercial_area_id
+                       AND s.category_l2 = p.category_l2
+WHERE s.gender IN ('M','F') AND s.age_band = ANY(ARRAY[10,20,30,40,50,60])
+  AND s.dow_type IN (0,1)   AND s.hour_band BETWEEN 0 AND 5;
+
+-- ④ 비중이 상권·업종별로 1에 가깝게 합쳐지나 (정규화가 맞았나)
+SELECT commercial_area_id, category_l2, round(SUM(affinity)::numeric, 3) AS s
+FROM segment_affinity GROUP BY 1, 2 HAVING SUM(affinity) < 0.95 OR SUM(affinity) > 1.05
+LIMIT 20;
+```
+
+또는 엔진 도구가 같은 걸 한 번에 답한다 — **"세그먼트 축 점검" 섹션**을 본다.
+
+```powershell
+cd roleB
+$env:DATABASE_URL = "<DSN>"
+python -m tools.check_data_readiness
+```
+
+### 2-2-2. `tag_embedding` 16행 — 투입 대비 효과가 제일 크다
+
+임베딩 **16번**이면 끝난다(분위기 10 + 목적 6). 이게 비어 있으면 온보딩의
+`taste_vector`가 NULL이 되고 취향 항 **0.16이 통째로 상수**다.
+
+```python
+from app.constants import ATMOSPHERE_TAGS, PURPOSE_TAGS   # 어휘는 여기가 원본이다
+rows = [(t, "atmosphere") for t in ATMOSPHERE_TAGS] + [(t, "purpose") for t in PURPOSE_TAGS]
+# embedding = bge-m3(tag)  ·  poi.tag_vector 와 **같은 모델·같은 공간**이어야 한다
+# INSERT INTO tag_embedding (tag, kind, embedding) VALUES (%s, %s, %s)
+```
+
+어휘를 임의로 늘리면 온보딩에서 조회되지 않고 **조용히 빠진다.** 늘리려면
+`roleB/app/constants.py`와 `openapi.yaml`을 함께 고쳐야 하고, 그건 3인 합의다.
+
 ### 2-3. `hotspot_snapshot` — 15분 폴링 (A3-4)
 
 B는 `hotspot_latest` 뷰만 읽는다. **요청마다 citydata를 부르지 않는다.**

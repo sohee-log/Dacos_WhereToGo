@@ -7,6 +7,8 @@ import {
   RecommendRequest,
   RecommendResponse,
   FeedbackRequest,
+  Context,
+  PoiDetail,
   ApiError,
   ApiErrorBody,
 } from "./types";
@@ -80,11 +82,21 @@ export async function submitOnboarding(
   });
 }
 
-/** GET /api/context/now — 배너용 날씨·대기질·혼잡도. 503이면 재시도 UI로 처리. */
-export async function getContextNow(): Promise<
-  RecommendResponse["context"]
-> {
-  return request("/api/context/now");
+/**
+ * GET /api/context/now — 배너용 날씨·대기질·혼잡도. 503이면 재시도 UI로 처리.
+ *
+ * ⚠️ `lat` · `lng`는 **필수 쿼리**다. 빼면 200이 아니라 422가 온다.
+ * `visit_at`을 주면 그 시각의 예보로 답한다(생략하면 지금). "저녁에 갈 건데"를
+ * 지금 날씨로 답하지 않으려면 추천 요청과 **같은 값**을 넘겨야 한다.
+ */
+export async function getContextNow(
+  lat: number,
+  lng: number,
+  visitAt?: string
+): Promise<Context> {
+  const qs = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  if (visitAt) qs.set("visit_at", visitAt);
+  return request(`/api/context/now?${qs.toString()}`);
 }
 
 /**
@@ -103,6 +115,12 @@ export async function postRecommend(
 
 /**
  * POST /api/feedback — 클릭·선택·만족도.
+ *
+ * ⚠️ `clicked`는 **클릭한 poi_id들의 배열**이고 `selected`는 **선택한 poi_id 문자열**이다.
+ * boolean으로 보내면 422다 (2026-08-28까지 그렇게 보내고 있었고, 아래 catch가
+ * 삼켜서 recommendation_log가 통째로 비어 있었다). 만족도 필드명은 `feedback`이다.
+ *
+ * 한 번에 다 보낼 필요는 없다 — 빈 값은 서버가 덮어쓰지 않는다.
  * 404("그 추천이 기록되지 않았다")는 사용자 흐름을 막지 않도록 여기서 삼킨다.
  * 호출부는 실패를 신경 쓸 필요 없이 fire-and-forget으로 쓰면 된다.
  */
@@ -117,16 +135,23 @@ export async function postFeedback(payload: FeedbackRequest): Promise<void> {
       // 무시: 피드백 한 건이 빠질 뿐 흐름은 막지 않는다 (핸드오프 §3-4)
       return;
     }
+    // 422는 이쪽이 계약을 어긴 것이다. 호출부가 .catch()로 받아 넘기더라도
+    // 콘솔에는 반드시 남긴다 — 이걸 안 남겨서 몇 주를 몰랐다.
+    if (err instanceof ApiError && err.status === 422) {
+      console.error("[계약 위반] POST /api/feedback 422 —", err.message, payload);
+      return;
+    }
     throw err;
   }
 }
 
 /**
  * GET /api/poi/{id} — 상세. reviews 최대 5건, 협찬 글은 뒤로 밀려서 온다.
- * ⚠️ 정확한 응답 필드가 openapi.yaml에서 아직 확인 안 됨 — 틀린 타입을 지어내느니
- * unknown으로 두고, 실제로 쓰는 곳에서 확인된 필드만 좁혀서 쓸 것.
+ *
+ * `outdoor_exposure` · `group_capacity` · `noise_level` · `price_band`의 **null은
+ * "아직 모른다"**는 뜻이다(A3-2). 0이나 4로 그리면 없는 사실을 지어내는 것이 된다.
  */
-export async function getPoi(poiId: string): Promise<unknown> {
+export async function getPoi(poiId: string): Promise<PoiDetail> {
   return request(`/api/poi/${encodeURIComponent(poiId)}`);
 }
 

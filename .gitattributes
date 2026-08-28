@@ -2,3 +2,7 @@
 # Windows에서 CRLF로 받으면 "#!/bin/sh\r" 가 되어 훅이 통째로 죽는다.
 .githooks/** text eol=lf
 *.sh        text eol=lf
+
+# 생성 파일. 생성기는 항상 LF로 쓴다(tools/gen_ts_types.py).
+# CRLF로 체크아웃되면 생성기를 돌릴 때마다 git이 "수정됨"으로 본다.
+roleC/lib/api-types.ts text eol=lf

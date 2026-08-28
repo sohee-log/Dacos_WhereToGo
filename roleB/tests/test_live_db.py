@@ -455,6 +455,31 @@ def test_feedback_updates_the_log(settings, db, executor, req):
     assert row["feedback"] == 5
 
 
+def test_clicked_accumulates_across_calls(settings, db, executor, req):
+    """C의 ResultCard는 카드를 누를 때마다 원소 하나짜리 배열을 보낸다.
+
+    덧쓰기면 마지막 클릭 하나만 남는다. 노출-클릭 로그가 랭킹 학습의 전제인데
+    (B4-4) 그러면 학습 데이터가 조용히 망가진다.
+    """
+    from app.services.logging_svc import record_feedback
+    from app.services.pipeline import build_live_recommendation
+
+    res = build_live_recommendation(req, settings, executor)
+    if len(res.results) < 2:
+        pytest.skip("후보가 2건 미만 — A의 적재 대기")
+    first, second = res.results[0].poi_id, res.results[1].poi_id
+
+    record_feedback(db.fetch_all, log_id=res.log_id, clicked=[first], selected=None, feedback=None)
+    record_feedback(db.fetch_all, log_id=res.log_id, clicked=[second], selected=None, feedback=None)
+    # 같은 것을 또 눌러도 중복으로 쌓이지 않는다
+    record_feedback(db.fetch_all, log_id=res.log_id, clicked=[first], selected=None, feedback=None)
+
+    row = executor(
+        "SELECT clicked FROM recommendation_log WHERE log_id=%(id)s", {"id": res.log_id}
+    )[0]
+    assert row["clicked"] == [first, second]      # 처음 등장한 순서 그대로
+
+
 def test_feedback_on_unknown_log_is_false(db):
     from app.services.logging_svc import record_feedback
 

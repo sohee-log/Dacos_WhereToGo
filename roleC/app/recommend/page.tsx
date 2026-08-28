@@ -226,6 +226,26 @@ function RecommendContent() {
           </div>
         ) : (
           <>
+            {/* [C4-4] 전환 게이트 — ?debug=1 에서만.
+                둘 다 true면 후보가 부족해 기준을 완화한 것이다. A의 적재가
+                끝나기 전까지는 계속 true이고, 여기가 false로 바뀌는 순간이
+                MOCK_MODE=false 전환 시점이다 (roleB BRIEF §3). */}
+            {debug && (
+              <div className="p-3 rounded-xl bg-slate-900 text-[11px] font-mono border border-slate-800 space-y-1">
+                <p className={data.low_confidence ? 'text-amber-400' : 'text-emerald-400'}>
+                  low_confidence: {String(data.low_confidence)}
+                  {data.low_confidence && ' — 후보 부족으로 attr_confidence 기준을 완화했다'}
+                </p>
+                <p className={data.radius_expanded ? 'text-amber-400' : 'text-emerald-400'}>
+                  radius_expanded: {String(data.radius_expanded)}
+                  {data.radius_expanded && ' — 검색 반경을 넓혀 재시도했다'}
+                </p>
+                {data.context.weather_source && (
+                  <p className="text-slate-400">weather_source: {data.context.weather_source}</p>
+                )}
+              </div>
+            )}
+
             <div className="rounded-3xl overflow-hidden shadow-sm border border-slate-100">
               <KakaoMap places={data.results} />
             </div>

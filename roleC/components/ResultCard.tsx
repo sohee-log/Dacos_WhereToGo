@@ -23,10 +23,14 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
   const [clicked, setClicked] = useState(false);
 
   // 클릭 로깅 — 실패해도(404 포함) 화면 흐름은 막지 않는다 (postFeedback이 내부에서 처리)
+  //
+  // `clicked`는 **클릭한 poi_id들의 배열**이다. boolean으로 보내면 422고,
+  // 아래 .catch()가 그걸 삼켜서 recommendation_log가 통째로 비어 있었다.
+  // 카드 하나가 한 건을 보내므로 원소 하나짜리 배열이 맞다 — 서버가 누적한다.
   const handleClick = () => {
     if (clicked) return;
     setClicked(true);
-    postFeedback({ log_id: logId, poi_id: place.poi_id, clicked: true }).catch((err) => {
+    postFeedback({ log_id: logId, clicked: [place.poi_id] }).catch((err) => {
       console.error('피드백 전송 실패', err);
     });
   };

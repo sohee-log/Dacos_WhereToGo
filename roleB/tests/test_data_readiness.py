@@ -33,7 +33,12 @@ class FakeCursor:
         raise RuntimeError('relation "없음" does not exist')
 
     def fetchone(self) -> dict[str, Any] | None:
-        return self._row
+        return self._row[0] if isinstance(self._row, list) else self._row
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        if isinstance(self._row, list):
+            return self._row
+        return [self._row] if self._row else []
 
 
 def _check(**kw) -> rd.Check:
@@ -272,3 +277,85 @@ def test_어휘_밖_값이_있으면_매칭_실패로_경고한다(capsys):
     }
     out = _progress_output(capsys, answers)
     assert "매칭 실패" in out
+
+
+# ── 세그먼트 축 점검 ─────────────────────────────────────────────────────
+#
+# 조인 키(상권×업종)만 맞아도 엔진 쿼리는 0행일 수 있다. 축이 어긋난 것은
+# 에러가 아니라 **중립값**이라 화면으로 구분이 안 된다. 이 섹션이 그걸 잡는다.
+
+
+def _axis_output(capsys, answers) -> str:
+    rd.segment_axis_audit(FakeCursor(answers), FakeConn())
+    return capsys.readouterr().out
+
+
+def _axis_answers(*, ages, hours, rows=1200):
+    """축 감사가 던지는 조회 5종을 전부 채운다. 좁은 키가 먼저다."""
+    return {
+        "DISTINCT age_band": [{"v": a} for a in ages],
+        "DISTINCT hour_band": [{"v": h} for h in hours],
+        "DISTINCT gender": [{"v": "F"}, {"v": "M"}],
+        "DISTINCT dow_type": [{"v": 0}, {"v": 1}],
+        "min(affinity)": {"lo": 0.0, "hi": 1.0, "nulls": 0},
+        "count(*) AS n FROM segment_affinity": {"n": rows},
+    }
+
+
+def test_축_점검이_모든_조회를_스텁으로_받는다(capsys):
+    """SQL을 고쳤는데 스텁을 안 고치면 '조회 실패'로 조용히 빠진다."""
+    out = _axis_output(
+        capsys, _axis_answers(ages=[10, 20, 30, 40, 50, 60], hours=[0, 1, 2, 3, 4, 5])
+    )
+    assert "조회 실패" not in out
+    assert "1,200행" in out
+    assert rd.MARKS["bad"] not in out
+
+
+def test_0행이면_배치_미착수라고_말한다(capsys):
+    out = _axis_output(capsys, {"count(*) AS n FROM segment_affinity": {"n": 0}})
+    assert "build_affinity" in out
+
+
+def test_5세_단위로_적재되면_잡아낸다(capsys):
+    """CHECK 제약이 막지만, 제약 없는 DB에서도 도구가 원인을 말해야 한다."""
+    out = _axis_output(
+        capsys, _axis_answers(ages=[20, 25, 30, 35], hours=[0, 1, 2, 3, 4, 5])
+    )
+    assert rd.MARKS["bad"] in out
+    assert "5세 단위" in out
+
+
+def test_빈_시간대_밴드를_경고한다(capsys):
+    out = _axis_output(
+        capsys, _axis_answers(ages=[10, 20, 30, 40, 50, 60], hours=[0, 1, 2])
+    )
+    assert "비어 있는 밴드 [3, 4, 5]" in out
+
+
+def test_시간대_경계를_출력한다(capsys):
+    """`시 // 4`로 적재해도 값 범위(0~5)가 같아 제약이 못 잡는다. 경계를 눈으로 보게 한다."""
+    out = _axis_output(
+        capsys, _axis_answers(ages=[10, 20, 30, 40, 50, 60], hours=[0, 1, 2, 3, 4, 5])
+    )
+    assert "0=00~06" in out and "4=17~21" in out and "5=21~24" in out
+    assert "시 // 4" in out
+
+
+def test_세그먼트_점검_SQL이_엔진의_축을_전부_건다():
+    """조인 키만 세면 축이 어긋나도 초록불이 나온다 — 이미 한 번 겪었다."""
+    check = next(c for c in rd.CHECKS if c.term == "segment_affinity")
+    for axis in ("s.gender", "s.age_band", "s.dow_type", "s.hour_band"):
+        assert axis in check.sql, f"{axis} 축이 안 걸려 있다"
+
+
+def test_축_점검이_리포트에_실제로_불린다():
+    """함수만 정의하고 `main`에 안 붙이면 테스트는 통과하는데 리포트에는 안 나온다.
+
+    실제로 그랬다 — 섹션을 만들어 놓고 호출을 안 붙였고, 이 파일의 단위
+    테스트가 함수를 직접 부르고 있어서 전부 초록이었다. 배선까지 본다.
+    """
+    import inspect
+
+    src = inspect.getsource(rd.main)
+    assert "segment_axis_audit(" in src, "축 점검이 리포트에 배선되지 않았다"
