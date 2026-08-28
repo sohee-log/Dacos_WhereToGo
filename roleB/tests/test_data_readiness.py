@@ -99,6 +99,21 @@ def test_모든_점검항목의_term은_실제_가중치_키다():
             assert c.term in W, c.label
 
 
+def test_outdoor_exposure_점검이_NULL을_채워진_것으로_세지_않는다():
+    """A의 A3-2가 근거 없는 POI에 NULL을 남긴다 — 그게 초록불이 되면 안 된다.
+
+    예전 SQL은 `IS DISTINCT FROM 0`이라 **NULL이 걸렸다.** 배치가 돌수록 이
+    항목이 초록으로 물드는데 순위는 하나도 안 움직인다. 엔진이 NULL을
+    OUTDOOR_EXPOSURE_UNKNOWN(0.0)으로 접어 context_fit이 중립이 되기 때문이다.
+    `segment_affinity`가 조인 키를 세다가 거짓 초록불을 준 것과 같은 종류다.
+    """
+    check = next(c for c in rd.CHECKS if c.term == "context_fit")
+    assert "IS DISTINCT FROM 0" not in check.sql, (
+        "NULL이 '채워짐'으로 세어진다 — 전환 게이트가 거짓 초록불을 준다"
+    )
+    assert "IS NOT NULL" in check.sql and "<> 0" in check.sql
+
+
 def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
     """지금 DB 상태(속성 전 건 0)를 재현한다. 이 경우를 놓치면 도구가 무의미하다."""
     answers = {
@@ -109,7 +124,7 @@ def test_A의_W2_적재_상태를_그대로_넣으면_치명으로_잡힌다():
         "commercial_area_id IS NOT NULL": {"filled": 6354, "total": 6644},
         "purpose_tags IS NOT NULL": {"filled": 0, "total": 6644},
         "tag_vector IS NOT NULL": {"filled": 0, "total": 6644},
-        "outdoor_exposure IS DISTINCT FROM 0": {"filled": 0, "total": 6644},
+        "outdoor_exposure IS NOT NULL": {"filled": 0, "total": 6644},
         "quality_score IS NOT NULL": {"filled": 0, "total": 6644},
         "hotspot_code IS NOT NULL": {"filled": 0, "total": 6644},
         "fcst->'population'": {"filled": 0, "total": 0},
@@ -183,3 +198,77 @@ def test_실제_점검표에_극소수_경고가_걸려있다():
     conf = next(c for c in rd.CHECKS if "attr_confidence" in c.label)
     assert conf.thin_below is not None
     assert conf.thin_note
+
+
+# ── A3-2 진척 섹션 ───────────────────────────────────────────────────────
+
+
+class FakeConn:
+    def rollback(self) -> None:
+        pass
+
+
+def _progress_output(capsys, answers) -> str:
+    rd.attr_extraction_progress(FakeCursor(answers), FakeConn(), 0.30)
+    return capsys.readouterr().out
+
+
+def test_배치가_한_건도_안_돌았으면_그렇게_말한다(capsys):
+    out = _progress_output(
+        capsys,
+        {
+            # 순서가 의미를 갖는다 — FakeCursor는 먼저 걸리는 키를 쓴다.
+            # done 쿼리도 "FROM poi WHERE tier = 1"을 포함하므로 좁은 쪽이 먼저다.
+            "attr_extracted_at IS NOT NULL": {"n": 0},
+            "FROM poi WHERE tier = 1": {"n": 800},
+        },
+    )
+    assert "0/800" in out
+    assert "extract_attributes" in out
+
+
+def test_진척_섹션이_모든_조회를_스텁으로_받는다(capsys):
+    """SQL을 고쳤는데 여기 스텁을 안 고치면 '조회 실패'로 조용히 빠진다.
+
+    실패가 출력에 섞여도 스크립트는 계속 돌기 때문에, 전환일에 **없는 줄을
+    없는 줄로 못 알아본다.** 그래서 여기서 먼저 잡는다.
+    """
+    answers = {
+        # 좁은 키가 먼저다 — FakeCursor는 먼저 걸리는 것을 쓰고, 넓은 키
+        # ("attr_extracted_at IS NOT NULL")는 confidence 쿼리에도 들어 있다.
+        "AS pass_min": {
+            "pass_min": 80,
+            "pass_relaxed": 95,
+            "zeros": 3,
+            "avg_c": 0.44,
+            "med_c": 0.46,
+        },
+        "attr_extracted_at IS NOT NULL AND (": {"n": 40},
+        "attr_extracted_at IS NOT NULL": {"n": 100},
+        "FROM poi WHERE tier = 1": {"n": 800},
+        "unnest": {"n": 0},
+    }
+    out = _progress_output(capsys, answers)
+    assert "조회 실패" not in out
+    assert "100/800" in out
+    assert "80/100" in out, "confidence 통과율이 안 찍혔다"
+    assert "0.440" in out and "0.460" in out
+    assert "고정 어휘 위반 0건" in out
+
+
+def test_어휘_밖_값이_있으면_매칭_실패로_경고한다(capsys):
+    answers = {
+        "AS pass_min": {
+            "pass_min": 80,
+            "pass_relaxed": 95,
+            "zeros": 0,
+            "avg_c": 0.44,
+            "med_c": 0.46,
+        },
+        "attr_extracted_at IS NOT NULL AND (": {"n": 40},
+        "attr_extracted_at IS NOT NULL": {"n": 100},
+        "FROM poi WHERE tier = 1": {"n": 800},
+        "unnest": {"n": 7},
+    }
+    out = _progress_output(capsys, answers)
+    assert "매칭 실패" in out

@@ -211,10 +211,32 @@ A의 `--clear-seed-mock`이 실제로 이 컬럼을 NULL로 되돌리므로 가�
 AND (p.group_capacity IS NULL OR p.group_capacity >= :party_size)
 ```
 
-> `outdoor_exposure`도 같은 모양이지만 **일부러 두었다.** 우천 하드컷은
-> "야외일지 모르는 곳"을 비 오는 날 빼는 것이 목적이라, 여기서 NULL을 통과시키면
-> 필터의 취지가 사라진다. DDL 기본값이 `0.0`이라 실제 NULL은
-> `--clear-seed-mock`이 지난 자리에만 생긴다.
+> **`outdoor_exposure`는 2026-08-24에 판단을 뒤집었다.**
+>
+> 원래는 일부러 NULL을 떨어뜨렸다 — "야외일지 모르는 곳"을 비 오는 날 빼는 것이
+> 우천 하드컷의 취지고, DDL 기본값이 `0.0`이라 실제 NULL은 `--clear-seed-mock`이
+> 지난 100건에만 생긴다는 전제가 있었다.
+>
+> A의 속성 추출(A3-2)이 그 전제를 깼다. 프롬프트 규칙 1이 "리뷰에서 확인할 수
+> 없는 속성은 반드시 null"이라, 배치가 돌면 **T1 800건 중 다수가 NULL이 된다.**
+> 그대로 두면 비 오는 날 · 미세먼지 나쁜 날에 T1이 통째로 후보에서 빠지고,
+> 에러가 아니라 최근접 폴백으로 주저앉는다.
+>
+> 미관측을 어떻게 볼지는 `constants.OUTDOOR_EXPOSURE_UNKNOWN`(=0.0) 한 곳에서
+> 정하고, 후보 SQL과 `context_fit`이 **같은 값**을 쓴다. 지금 값에서는 모든
+> 날씨 계수가 1로 접혀 정확히 중립(1.0)이 된다 — "모르는 곳은 날씨로 올리지도
+> 내리지도 않는다"와 같은 뜻이다.
+>
+> ```sql
+> AND (:rain_prob < 0.6 OR COALESCE(p.outdoor_exposure, :outdoor_unknown) <= 0.7)
+> ```
+>
+> 다만 **점수에서 0.0으로 접는 것과 사용자에게 "실내"라고 말하는 것은 다르다.**
+> `template_reason`은 관측이 있을 때만 "실내 위주로 골랐습니다"를 쓰고, LLM
+> 프롬프트에는 `야외노출 미상`으로 넣는다 — `None`을 그대로 흘리면 모델이 0으로
+> 읽고 실내라고 지어낸다.
+>
+> 계약 테스트: [`tests/test_attr_extraction_contract.py`](tests/test_attr_extraction_contract.py)
 
 ---
 

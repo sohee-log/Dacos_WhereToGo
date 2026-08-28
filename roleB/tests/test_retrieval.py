@@ -110,13 +110,29 @@ def test_hard_filter_params_are_passed_through(query):
 
 def test_expands_radius_when_candidates_are_thin(query):
     """후보가 얇으면 순위가 의미를 잃는다. 최대 2회까지 넓힌다."""
-    ex = FakeExecutor([5, 5, 5])
+    ex = FakeExecutor([5, 5, 40])
     result = retrieve(ex, query)
 
     assert result.radius_expanded is True
     assert result.radius_m == pytest.approx(DEFAULT_RADIUS_M * RADIUS_EXPAND_FACTOR**2)
     assert len(ex.candidate_calls) == 3          # 최초 1 + 확대 2
-    assert result.low_confidence is False        # 확대만으로 충분했다
+    assert result.low_confidence is False        # 확대만으로 충분했다 (40 >= 30)
+
+
+def test_still_thin_after_expanding_is_low_confidence(query):
+    """반경을 다 넓혀도 얇으면, 결과가 3건 나와도 **순위는 못 믿는다.**
+
+    예전엔 이 표시를 완화·최근접 분기에서만 켰다. 그래서 임계값을 통과한 POI가
+    전 도시에 3건뿐인 실 DB에서도 `low_confidence=False`가 나갔다 — C에게 준
+    계약("후보가 극소수 → 순위를 신뢰하기 어렵다")과 어긋나고, 하필 안전한
+    쪽으로 틀리지 않는다. 전환 판정을 이 필드로 보기 때문에 더 나쁘다.
+    """
+    ex = FakeExecutor([3, 3, 3])
+    result = retrieve(ex, query)
+
+    assert len(result.candidates) == 3           # 화면에는 3건이 나간다
+    assert result.low_confidence is True         # 그래도 순위는 못 믿는다
+    assert len(ex.candidate_calls) == 3          # 완화 분기까지 가지는 않는다
 
 
 def test_relaxes_confidence_when_still_short(query):

@@ -68,7 +68,14 @@ FROM (
     SELECT rc.poi_id, rc.text, rc.source,
            row_number() OVER (
                PARTITION BY rc.poi_id
-               ORDER BY rc.is_sponsored, rc.written_at DESC NULLS LAST
+               -- A의 A3-2는 written_at을 채우지 않는다(리뷰 JSONL의 postdate가
+               -- INSERT에 안 실린다). 전 건 NULL이면 이 정렬은 동점이 되고,
+               -- 그러면 같은 요청이 요청마다 다른 문장을 인용할 수 있다.
+               -- chunk_id로 동점을 끊는다. DESC인 이유는 주 정렬키가
+               -- written_at DESC(최신 우선)이고 BIGSERIAL이 시간순으로 늘기
+               -- 때문이다 — 같은 규칙을 이어 간다.
+               ORDER BY rc.is_sponsored, rc.written_at DESC NULLS LAST,
+                        rc.chunk_id DESC
            ) AS rn
     FROM review_chunk rc
     WHERE rc.poi_id = ANY(%(poi_ids)s)

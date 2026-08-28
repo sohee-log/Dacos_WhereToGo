@@ -251,8 +251,12 @@ class PoiDetail(BaseModel):
     dong: str | None = None
     zone: Zone | None = None
     business_hours: dict[str, Any] | None = None
-    outdoor_exposure: float = Field(default=0.0, ge=0, le=1)
-    group_capacity: int = 4
+    # A의 A3-2는 리뷰에 근거가 없으면 이 둘을 NULL로 남긴다. 0.0("완전 실내")과
+    # 4("4인석")를 대신 넣으면 **모르는 것을 관측한 척** 상세 화면에 적게 된다.
+    # 바로 아래 noise_level·price_band가 이미 nullable이라 거기에 맞췄다.
+    # C는 null이면 그 줄을 그리지 않는다 (0으로 그리면 안 된다 — HANDOFF_TO_C §6).
+    outdoor_exposure: float | None = Field(default=None, ge=0, le=1)
+    group_capacity: int | None = Field(default=None, ge=1)
     noise_level: int | None = Field(default=None, ge=1, le=5)
     price_band: int | None = Field(default=None, ge=1, le=4)
     purpose_tags: list[Purpose] = Field(default_factory=list)

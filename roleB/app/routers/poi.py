@@ -38,8 +38,9 @@ def _to_detail(row: dict[str, Any]) -> PoiDetail:
         dong=row.get("dong"),
         zone=row["zone"] if row.get("zone") in ZONES else None,
         business_hours=row.get("business_hours"),
-        outdoor_exposure=row.get("outdoor_exposure") or 0.0,
-        group_capacity=row.get("group_capacity") or 4,
+        # `or`를 쓰면 실제로 관측된 0.0까지 None으로 바뀐다. 미관측만 통과시킨다.
+        outdoor_exposure=row.get("outdoor_exposure"),
+        group_capacity=row.get("group_capacity"),
         noise_level=row.get("noise_level"),
         price_band=row.get("price_band"),
         purpose_tags=_known(row.get("purpose_tags"), PURPOSE_TAGS),

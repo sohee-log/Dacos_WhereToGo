@@ -31,6 +31,7 @@ from app.constants import (
     DEFAULT_RADIUS_M,
     MAX_RADIUS_RETRY,
     MIN_CANDIDATES,
+    OUTDOOR_EXPOSURE_UNKNOWN,
     RADIUS_EXPAND_FACTOR,
     RESULT_MIN,
 )
@@ -78,8 +79,16 @@ WHERE ST_DWithin(p.geom, {_POINT}, %(radius_m)s)
   -- 속성 미확보는 배제가 아니라 순위 강등으로 다룬다 (ROLE_B §1.3) —
   -- 실제로 attr_confidence가 그 역할을 하고, price_band도 같은 규칙이다.
   AND (p.group_capacity IS NULL OR p.group_capacity >= %(party_size)s)
-  AND (%(rain_prob)s < 0.6 OR p.outdoor_exposure <= 0.7)
-  AND (%(pm25_grade)s < 4 OR p.outdoor_exposure <= 0.5)
+  -- outdoor_exposure도 같은 규칙이다. 예전엔 일부러 NULL을 떨어뜨렸는데,
+  -- 그 판단은 "NULL은 --clear-seed-mock 자리에만 생긴다"는 전제 위에 있었다.
+  -- A의 A3-2가 리뷰에 근거가 없으면 이 컬럼을 NULL로 남기면서 전제가 깨졌다 —
+  -- T1 전량이 우천 시 후보에서 통째로 빠질 수 있는 모양이 됐다.
+  -- 미관측을 어떻게 볼지는 constants.OUTDOOR_EXPOSURE_UNKNOWN 한 곳에서 정하고,
+  -- 점수(context_fit)와 **같은 값**을 쓴다. 갈리면 필터와 순위가 다른 세계를 본다.
+  AND (%(rain_prob)s < 0.6
+       OR COALESCE(p.outdoor_exposure, %(outdoor_unknown)s) <= 0.7)
+  AND (%(pm25_grade)s < 4
+       OR COALESCE(p.outdoor_exposure, %(outdoor_unknown)s) <= 0.5)
   AND (p.price_band IS NULL OR p.price_band <= %(budget_band)s)
   AND p.attr_confidence >= %(conf_min)s
 ORDER BY dist_m
@@ -139,7 +148,8 @@ LEFT JOIN LATERAL (
         SELECT text, source
         FROM review_chunk
         WHERE poi_id = p.poi_id
-        ORDER BY is_sponsored, written_at DESC NULLS LAST
+        -- written_at이 전 건 NULL이면 동점이라 순서가 매번 달라진다 (rag.py 참조)
+        ORDER BY is_sponsored, written_at DESC NULLS LAST, chunk_id DESC
         LIMIT 5
     ) c
 ) r ON TRUE
@@ -211,6 +221,7 @@ def _params(q: RetrievalQuery, radius_m: float, conf_min: float) -> dict[str, An
         "budget_band": q.budget_band,
         "rain_prob": q.rain_prob,
         "pm25_grade": q.pm25_grade,
+        "outdoor_unknown": OUTDOOR_EXPOSURE_UNKNOWN,
         "conf_min": conf_min,
         "limit": q.limit,
         "user_id": q.user_id,
@@ -234,6 +245,16 @@ def retrieve(executor: Executor, q: RetrievalQuery) -> RetrievalResult:
         result.radius_m = radius
         result.radius_expanded = True
         result.strategy = "radius_expanded"
+
+    # 반경을 다 넓혔는데도 얇으면, 결과가 3건 나오더라도 **순위는 못 믿는다.**
+    # 예전엔 이 표시를 ②·③ 분기에서만 켰다. 그래서 임계값을 통과한 POI가 전
+    # 도시에 3건뿐인 상태에서도 `low_confidence=False`가 나갔다 —
+    # C에게 준 계약("후보가 극소수 → 순위를 신뢰하기 어렵다")과 어긋나고,
+    # 하필 **안전한 쪽으로 틀리지 않는다.** 전환 판정을 이 필드로 보는데
+    # 3/6,644에서 초록불이 켜진다. MIN_CANDIDATES가 이미 "순위가 의미를 갖는
+    # 최소 후보 수"라 그 기준을 그대로 쓴다.
+    if len(result.candidates) < MIN_CANDIDATES:
+        result.low_confidence = True
 
     if len(result.candidates) >= RESULT_MIN:
         return result

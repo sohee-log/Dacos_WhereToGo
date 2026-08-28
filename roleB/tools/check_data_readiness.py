@@ -30,7 +30,12 @@ from dataclasses import dataclass
 import psycopg
 from psycopg.rows import dict_row
 
-from app.constants import W
+from app.constants import (
+    ATMOSPHERE_TAGS,
+    ATTR_CONFIDENCE_RELAXED,
+    PURPOSE_TAGS,
+    W,
+)
 from app.services.live_signals import SNAPSHOT_STALE_AFTER
 
 # 스냅샷이 이보다 오래되면 폴링이 죽은 것이다.
@@ -179,11 +184,20 @@ CHECKS: list[Check] = [
     Check(
         label="outdoor_exposure (날씨 축)",
         term="context_fit",
+        # ⚠️ 예전엔 `IS DISTINCT FROM 0`이었다. **NULL이 여기에 걸린다.**
+        # A의 A3-2는 리뷰에 근거가 없으면 이 컬럼을 NULL로 남기므로, 배치가 돌수록
+        # 이 체크가 초록으로 물드는데 정작 순위는 하나도 안 움직인다 —
+        # NULL은 엔진에서 OUTDOOR_EXPOSURE_UNKNOWN(0.0)으로 접혀 중립이 된다.
+        # segment_affinity 때와 같은 종류의 거짓 초록불이라 실측만 센다.
         sql=(
-            "SELECT count(*) FILTER (WHERE outdoor_exposure IS DISTINCT FROM 0) AS filled,"
+            "SELECT count(*) FILTER (WHERE outdoor_exposure IS NOT NULL"
+            "   AND outdoor_exposure <> 0) AS filled,"
             " count(*) AS total FROM poi"
         ),
-        note="전 건이 기본값 0이면 실내/야외 구분이 없어 날씨가 순위를 못 바꾼다",
+        note=(
+            "관측된 야외노출(NULL도 0도 아닌 값)만 센다. 0과 NULL은 둘 다 "
+            "context_fit이 1.0(중립)이라 순위를 못 바꾼다"
+        ),
     ),
     Check(
         label="quality_score",
@@ -234,6 +248,18 @@ SIDE_CHECKS: list[Check] = [
         term=None,
         sql="SELECT count(*) AS filled, %(qv_rows)s AS total FROM query_vector_cache",
         note=f"{QUERY_VECTOR_ROWS}행. 없어도 인용은 나간다(최신순 폴백) — 정확도만 떨어진다",
+    ),
+    Check(
+        label="review_chunk 적재",
+        term=None,
+        # 임베딩 체크는 review_chunk가 **0행이면 0/0 = 0%**로 나와서 "임베딩이
+        # 없다"처럼 읽힌다. 실제로는 인용할 문장 자체가 없는 것이고, 그게 훨씬
+        # 나쁘다. 본체와 임베딩을 갈라서 센다. A3-2가 POI당 최대 3청크를 넣는다.
+        sql=(
+            "SELECT count(DISTINCT poi_id) AS filled,"
+            " (SELECT count(*) FROM poi WHERE tier = 1) AS total FROM review_chunk"
+        ),
+        note="0이면 인용(RAG)이 전부 빈다. T1 대비 청크가 있는 POI 비율",
     ),
     Check(
         label="review_chunk 임베딩",
@@ -315,6 +341,166 @@ def snapshot_age(cur) -> str:
     return f"{mark} 최근 스냅샷 {minutes:.0f}분 전{tail}"
 
 
+# ============================================================================
+# A3-2(LLM 속성 추출) 진척 — "돌긴 돌았는가"와 "돌아서 쓸 만한가"는 다르다
+# ============================================================================
+#
+# 위 CHECKS는 poi 전체(6,644)를 분모로 잡는다. 그런데 A3-2는 **T1 800건만**
+# 대상이라, 완주해도 채움률은 12%가 최대다. 그 숫자만 보면 배치가 실패한 것처럼
+# 읽힌다. 여기서는 분모를 "추출이 끝난 T1"으로 바꿔서 다른 질문에 답한다 —
+# 배치가 얼마나 갔고, 나온 값이 실제로 순위를 움직일 만한가.
+
+_ATTR_COLUMNS: list[tuple[str, str]] = [
+    ("outdoor_exposure", "outdoor_exposure IS NOT NULL AND outdoor_exposure <> 0"),
+    ("purpose_tags", "purpose_tags IS NOT NULL AND cardinality(purpose_tags) > 0"),
+    (
+        "atmosphere_tags",
+        "atmosphere_tags IS NOT NULL AND cardinality(atmosphere_tags) > 0",
+    ),
+    ("noise_level", "noise_level IS NOT NULL"),
+    ("price_band", "price_band IS NOT NULL"),
+    ("group_capacity", "group_capacity IS NOT NULL"),
+    ("sentiment_score", "sentiment_score IS NOT NULL"),
+    # ⚠️ `IS NOT NULL`로는 부족하다. LLM이 근거가 없을 때 null이 아니라
+    # `{"weekday": null, "weekend": null}` **객체**를 돌려주고, A는 그걸 그대로
+    # Jsonb로 넣는다(실측: 추출 10건 중 7건이 이 모양, 실제 값이 든 건 0건).
+    # 컬럼은 NOT NULL인데 내용은 비어 있다 — hotspot_snapshot.fcst와 같은 함정이다.
+    (
+        "wait_intensity",
+        "wait_intensity IS NOT NULL AND (wait_intensity->>'weekday' IS NOT NULL"
+        " OR wait_intensity->>'weekend' IS NOT NULL)",
+    ),
+    ("business_hours", "business_hours IS NOT NULL"),
+]
+
+
+def _scalar(cur, sql: str, params: dict | None = None):
+    cur.execute(sql, params or {})
+    row = cur.fetchone() or {}
+    return next(iter(row.values()), None)
+
+
+def attr_extraction_progress(cur, conn, conf_min: float) -> None:
+    """A3-2가 어디까지 갔고, 그 산출물이 후보 필터를 통과하는가."""
+    try:
+        t1 = int(_scalar(cur, "SELECT count(*) AS n FROM poi WHERE tier = 1") or 0)
+        done = int(
+            _scalar(
+                cur,
+                "SELECT count(*) AS n FROM poi"
+                " WHERE tier = 1 AND attr_extracted_at IS NOT NULL",
+            )
+            or 0
+        )
+    except Exception as exc:
+        conn.rollback()
+        print(f"  {MARKS['bad']} 조회 실패 — {str(exc).strip().splitlines()[0]}")
+        return
+
+    if not t1:
+        print(f"  {MARKS['bad']} T1 POI가 0건이다 — 티어 부여(A2)가 아직이다")
+        return
+
+    mark = MARKS["ok"] if done >= t1 else (MARKS["warn"] if done else MARKS["bad"])
+    print(f"  {mark} 추출 완료  {done:,}/{t1:,}  ({done / t1 * 100:.1f}%)")
+    if not done:
+        print("      └ 배치가 아직 한 건도 안 돌았다 (roleA `extract_attributes.py`)")
+        return
+
+    # 분모를 "추출이 끝난 건"으로 바꾼다. 미처리분을 섞으면 품질이 진척에 가려진다.
+    print(f"\n  컬럼별 관측률 (추출 완료 {done:,}건 기준 · NULL = 리뷰에 근거 없음)")
+    width = max(len(name) for name, _ in _ATTR_COLUMNS)
+    for name, cond in _ATTR_COLUMNS:
+        try:
+            n = int(
+                _scalar(
+                    cur,
+                    "SELECT count(*) AS n FROM poi WHERE tier = 1"
+                    f" AND attr_extracted_at IS NOT NULL AND ({cond})",
+                )
+                or 0
+            )
+        except Exception as exc:
+            conn.rollback()
+            print(f"    {MARKS['bad']} {name:<{width}}  조회 실패 — {exc}")
+            continue
+        rate = n / done
+        m = MARKS["ok"] if rate >= 0.5 else (MARKS["warn"] if n else MARKS["bad"])
+        print(f"    {m} {name:<{width}}  {rate * 100:5.1f}%  ({n:,}/{done:,})")
+
+    # attr_confidence — 후보 하드필터가 실제로 이 값을 자른다.
+    try:
+        cur.execute(
+            "SELECT"
+            "  count(*) FILTER (WHERE attr_confidence >= %(conf_min)s) AS pass_min,"
+            "  count(*) FILTER (WHERE attr_confidence >= %(relaxed)s) AS pass_relaxed,"
+            "  count(*) FILTER (WHERE attr_confidence = 0) AS zeros,"
+            "  avg(attr_confidence) AS avg_c,"
+            "  percentile_cont(0.5) WITHIN GROUP (ORDER BY attr_confidence) AS med_c"
+            " FROM poi WHERE tier = 1 AND attr_extracted_at IS NOT NULL",
+            {"conf_min": conf_min, "relaxed": ATTR_CONFIDENCE_RELAXED},
+        )
+        row = cur.fetchone() or {}
+    except Exception as exc:
+        conn.rollback()
+        print(f"  {MARKS['bad']} attr_confidence 조회 실패 — {exc}")
+        row = {}
+
+    if row:
+        pass_min = int(row.get("pass_min") or 0)
+        pass_relaxed = int(row.get("pass_relaxed") or 0)
+        zeros = int(row.get("zeros") or 0)
+        avg_c = float(row.get("avg_c") or 0.0)
+        med_c = float(row.get("med_c") or 0.0)
+        rate = pass_min / done
+        m = MARKS["ok"] if rate >= 0.7 else (MARKS["warn"] if pass_min else MARKS["bad"])
+        print("\n  attr_confidence (후보 하드필터가 이 값을 자른다)")
+        print(
+            f"    {m} >= {conf_min:.2f} (기본)   {rate * 100:5.1f}%"
+            f"  ({pass_min:,}/{done:,})"
+        )
+        print(
+            f"      >= {ATTR_CONFIDENCE_RELAXED:.2f} (완화)  "
+            f"{pass_relaxed / done * 100:5.1f}%  ({pass_relaxed:,}/{done:,})"
+        )
+        print(f"      평균 {avg_c:.3f} · 중앙값 {med_c:.3f} · 정확히 0인 건 {zeros:,}")
+        if rate < 0.7:
+            print(
+                "      └ A의 W4 목표는 confidence 0.5 이상이 70%다. 여기가 낮으면"
+                " 배치가 끝난 뒤에도"
+            )
+            print("        후보가 얇아 low_confidence로 나간다")
+
+    # 고정 어휘 위반 — 어휘 밖 문자열은 에러가 아니라 **영원한 매칭 실패**다.
+    vocab_checks = (
+        ("purpose_tags", PURPOSE_TAGS),
+        ("atmosphere_tags", ATMOSPHERE_TAGS),
+    )
+    for col, vocab in vocab_checks:
+        try:
+            n = int(
+                _scalar(
+                    cur,
+                    f"SELECT count(*) AS n FROM poi WHERE {col} IS NOT NULL"
+                    f"   AND EXISTS (SELECT 1 FROM unnest({col}) t"
+                    "               WHERE t <> ALL(%(vocab)s))",
+                    {"vocab": list(vocab)},
+                )
+                or 0
+            )
+        except Exception as exc:
+            conn.rollback()
+            print(f"  {MARKS['bad']} {col} 어휘 검사 실패 — {exc}")
+            continue
+        if n:
+            print(
+                f"  {MARKS['bad']} {col}에 고정 어휘 밖 값이 든 POI {n:,}건 —"
+                " 조인 실패가 아니라 **영원한 매칭 실패**다 (constants.py와 대조)"
+            )
+        else:
+            print(f"  {MARKS['ok']} {col} 고정 어휘 위반 0건")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dsn", default=os.environ.get("DATABASE_URL"))
@@ -358,6 +544,9 @@ def main() -> int:
         print("\n그 밖에")
         render(SIDE_CHECKS)
         print(f"\n  {snapshot_age(cur)}")
+
+        print("\nA3-2 LLM 속성 추출 (T1 전용 · 분모가 위와 다르다)")
+        attr_extraction_progress(cur, conn, args.conf_min)
 
     # --- 결론 ---------------------------------------------------------------
     fatal = [c for c in CHECKS if c.fatal and (c.error or c.filled == 0)]
