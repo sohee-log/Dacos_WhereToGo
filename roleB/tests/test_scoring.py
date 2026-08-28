@@ -31,6 +31,7 @@ from app.services.scoring import (
     quality_term,
     renormalized_score,
     segment_affinity_term,
+    segment_reference,
     taste_similarity,
     total_score,
 )
@@ -164,9 +165,68 @@ def test_purpose_match_without_tags_is_neutral_not_zero():
 
 def test_missing_inputs_fall_back_to_neutral():
     assert segment_affinity_term(None) == NEUTRAL_TERM
+    # 기준점이 없으면(후보 전원이 통계를 못 가짐) 항 전체가 중립으로 쉰다
+    assert segment_affinity_term(0.02, None) == NEUTRAL_TERM
+    assert segment_affinity_term(0.02, 0.0) == NEUTRAL_TERM
     assert quality_term(None) == NEUTRAL_TERM
     assert taste_similarity(None, [1.0, 0.0]) == NEUTRAL_TERM
     assert taste_similarity([0.0, 0.0], [1.0, 0.0]) == NEUTRAL_TERM   # 영벡터
+
+
+def test_segment_affinity는_기준점_대비로_읽는다():
+    """affinity는 "품질"이 아니라 "비중"이다 — 절대값으로 중립값과 비교할 수 없다.
+
+    상권·업종 하나 안에서 144칸(성별2×연령6×요일2×시간대6)에 나눠 담기고 합이
+    1이라, 한 칸의 자연스러운 크기는 1/144 ≈ 0.007이다. 그대로 항으로 쓰면
+    **통계를 가진 POI가 구조적으로 중립값 아래로 깔린다.**
+
+    실 DB 실측(2026-08-28 이태원 19시 20대 여성): 후보 307건 중 통계를 가진
+    274건이 **전부** 중립 아래였다. 개인화 근거를 가진 쪽이 0.107점 손해였다.
+    """
+    ref = 0.015                                   # 이번 후보들의 중앙값
+    assert segment_affinity_term(ref, ref) == pytest.approx(NEUTRAL_TERM)
+    assert segment_affinity_term(0.045, ref) > NEUTRAL_TERM      # 평균의 3배
+    assert segment_affinity_term(0.005, ref) < NEUTRAL_TERM
+    # 단조증가
+    vals = [segment_affinity_term(a, ref) for a in (0.001, 0.01, 0.03, 0.09)]
+    assert vals == sorted(vals)
+
+
+def test_비중_스케일이_바뀌어도_항은_그대로다():
+    """원본이 몇 칸으로 쪼개지든 무관해야 한다. 축은 이미 한 번 바뀌었다.
+
+    5세 단위(288칸)든 10년 단위(144칸)든, 상대적 위치가 같으면 항도 같아야 한다.
+    """
+    coarse = segment_affinity_term(0.030, 0.015)   # 중앙값의 2배
+    fine = segment_affinity_term(0.015, 0.0075)    # 칸이 두 배로 쪼개져 값이 절반
+    assert coarse == pytest.approx(fine)
+
+
+def test_관측된_0은_중립이_아니다():
+    """모르는 것(None)과 "그 세그먼트는 안 간다"(0)는 다르다 (ROLE_B §1.3)."""
+    assert segment_affinity_term(0.0, 0.015) == 0.0
+    assert segment_affinity_term(None, 0.015) == NEUTRAL_TERM
+
+
+def test_기준점은_관측값의_중앙값이다():
+    assert segment_reference([0.01, 0.02, 0.03]) == pytest.approx(0.02)
+    # None과 0은 기준점 계산에서 뺀다 — 0은 관측이지만 중앙값을 끌어내린다
+    assert segment_reference([None, 0.0, 0.01, 0.03]) == pytest.approx(0.02)
+    assert segment_reference([]) is None
+    assert segment_reference([None, None]) is None
+
+
+def test_설명_문장이_실데이터에서_뜰_수_있다():
+    """explain.py는 항 > 0.8이어야 "또래 방문 비중이 높은 곳" 문장을 붙인다.
+
+    원시 비중(최댓값 0.047)으로는 **한 번도 뜬 적이 없었다.** 기준점 대비로
+    바꾸면 중앙값의 5배에서 0.8을 넘는다(4배는 정확히 0.8이다).
+    """
+    from app.services.explain import STRONG_TERM
+
+    ref = 0.015
+    assert segment_affinity_term(ref * 5, ref) > STRONG_TERM
+    assert segment_affinity_term(ref * 2, ref) < STRONG_TERM
 
 
 def test_taste_similarity_is_cosine():

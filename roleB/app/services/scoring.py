@@ -21,7 +21,8 @@ W3(B3-1/B3-2)에서 `context_fit`의 실측 날씨 소스와 `live_*`의 스냅�
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+import statistics
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from app.constants import (
@@ -185,9 +186,51 @@ def taste_from_similarity(similarity: float | None) -> float:
     return _clip01(float(similarity))        # 음의 코사인은 0으로 본다
 
 
-def segment_affinity_term(affinity: float | None) -> float:
-    """상권×업종×세그먼트 소비강도. 조인 키가 없으면 중립 (0이 아니다)."""
-    return NEUTRAL_TERM if affinity is None else _clip01(float(affinity))
+def segment_reference(affinities: Iterable[float | None]) -> float | None:
+    """이번 요청 후보들의 affinity 중앙값. `segment_affinity_term`의 기준점이다.
+
+    관측값이 없으면 None → 항 전체가 중립으로 쉰다.
+    """
+    seen = sorted(float(a) for a in affinities if a is not None and float(a) > 0)
+    if not seen:
+        return None
+    return statistics.median(seen)
+
+
+def segment_affinity_term(affinity: float | None, ref: float | None = None) -> float:
+    """상권×업종×세그먼트 소비강도. 조인 키가 없으면 중립 (0이 아니다).
+
+    **`affinity`는 0~1이지만 "품질 점수"가 아니라 "비중"이다.**
+    상권·업종 하나 안에서 성별2 × 연령6 × 요일2 × 시간대6 = 144칸에 나눠 담기고
+    합이 1이 된다. 그래서 한 칸의 자연스러운 크기는 1/144 ≈ 0.007이다.
+
+    이걸 그대로 항으로 쓰면 **중립값(0.5)보다 구조적으로 낮다.** 실 DB 실측
+    (2026-08-28, 이태원 19시 20대 여성): 후보 307건 중 274건이 통계를 갖는데
+    그 274건이 **전부** 중립 아래였다 (중앙값 0.0153, 최댓값 0.0468).
+
+        데이터 있음  0.22 × 0.0153 = 0.0034
+        데이터 없음  0.22 × 0.5    = 0.1100
+
+    즉 **개인화 근거를 가진 POI가 0.107점을 손해 본다.** 가중치 0.22가 쉬는
+    게 아니라 부호가 뒤집혀 있었다 — R1(CF 대신 세그먼트 통계)의 근거 자체가
+    반대로 작동한 것이고, 화면으로는 "그냥 가까운 곳부터"로만 보인다.
+
+    그래서 **기준점 대비 비율**로 바꾼다.
+
+        term = a / (a + ref)        ref = 이번 후보들의 affinity 중앙값
+
+    성질이 필요한 것을 전부 만족한다.
+      · a == ref  → 정확히 0.5. "모른다"가 "평균이다"와 같은 뜻이 된다 (§1.3)
+      · a > ref   → 0.5 초과, 단조증가, 1에 수렴
+      · 원본이 몇 칸으로 쪼개져 있든 **스케일에 무관하다.** 상권분석 축이
+        바뀌어도(그런 적 있다) 이 항은 다시 손볼 필요가 없다
+
+    관측된 0은 0으로 둔다. "모른다"가 아니라 **"그 세그먼트는 안 간다"는 관측**이다.
+    """
+    if affinity is None or ref is None or ref <= 0:
+        return NEUTRAL_TERM
+    a = max(0.0, float(affinity))
+    return _clip01(a / (a + ref))
 
 
 def quality_term(quality_score: float | None) -> float:
@@ -241,6 +284,9 @@ def build_terms(
     purpose: str,
     wx: Mapping[str, Any],
     affinity: float | None = None,
+    # 이번 요청 후보들의 affinity 중앙값. affinity가 "비중"이라 절대값으로는
+    # 중립값과 비교할 수 없다 — segment_affinity_term의 docstring 참조.
+    affinity_ref: float | None = None,
     taste_sim: float | None = None,
     user_age_band: int | None = None,
     weather_sensitivity: int = DEFAULT_WEATHER_SENSITIVITY,
@@ -256,7 +302,7 @@ def build_terms(
     congest = congest_lvl
 
     return {
-        "segment_affinity": segment_affinity_term(affinity),
+        "segment_affinity": segment_affinity_term(affinity, affinity_ref),
         "purpose_match": purpose_match(poi.get("purpose_tags"), purpose),
         "taste_similarity": taste_from_similarity(
             taste_sim if taste_sim is not None else poi.get("taste_sim")
