@@ -1,0 +1,34 @@
+name: Supabase Keepalive
+
+# Supabase 무료 플랜은 7일간 API/DB 요청이 없으면 프로젝트를 일시정지시킨다.
+# 발표 직전에 DB가 잠들어 있으면 곤란하므로, 매일 한 번 가볍게 쿼리 하나를 날린다.
+# DATABASE_URL 시크릿 하나만 있으면 되도록 psql로 직접 접속한다.
+
+on:
+  schedule:
+    # 매일 UTC 03:00 (KST 정오 12:00)
+    - cron: "0 3 * * *"
+  workflow_dispatch: {} # 수동으로도 즉시 실행 가능하게
+
+jobs:
+  ping-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: sudo apt-get update -y && sudo apt-get install -y postgresql-client
+
+      - name: Ping Supabase via DATABASE_URL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL 시크릿이 설정되지 않았습니다. 저장소 Settings > Secrets and variables > Actions 에서 등록하세요."
+            exit 1
+          fi
+
+          if psql "$DATABASE_URL" -c "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ Keepalive 성공"
+          else
+            echo "::error::DB 연결 실패 — DATABASE_URL 값을 확인하세요 (비밀번호 URL 인코딩 여부 등)."
+            exit 1
+          fi
