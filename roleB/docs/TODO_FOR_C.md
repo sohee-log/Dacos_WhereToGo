@@ -88,15 +88,30 @@ Render 대시보드 → 서비스 → **Environment**
 ### 전환 순서 (이 순서를 지킬 것)
 
 ```
-1. DATABASE_URL 입력 · LLM_MODEL 변경   ← MOCK_MODE=true 인 동안은 풀을 안 연다. 안전하다
-2. 재배포 후 /health 확인               → {"db": true, "mode": "mock"}
+1. DATABASE_URL · LLM_API_KEY · LLM_MODEL 입력   ← MOCK_MODE=true 인 동안은 풀을 안 연다. 안전하다
+2. 재배포 후 /health 확인                        → {"db": true, "db_reason": "MOCK_MODE=true · DSN 연결 OK"}
 3. B에게 알린다 → B가 check_data_readiness 로 전환 판정
-4. MOCK_MODE=false                      → {"db": true, "mode": "live"}
+4. MOCK_MODE=false                               → {"db": true, "mode": "live"}
 5. 화면에서 ?debug=1 로 low_confidence / radius_expanded 확인
 ```
 
 `MOCK_MODE=false`를 먼저 내리지 말 것. DB가 안 붙은 상태에서 내리면 **503이 아니라
 200이 나가면서 순위만 사라지는** 경로로 갈 수 있다.
+
+### `/health` 로 원인을 구분한다
+
+`db`는 **목 모드에서도 실제 연결을 확인한 결과**다(2026-08-28 추가). `db_reason`이
+왜 그 값인지 말해 준다. 이 네 가지를 구분할 수 있다.
+
+| `/health` 응답 | 뜻 | 할 일 |
+|---|---|---|
+| `db:true` · `MOCK_MODE=true · DSN 연결 OK` | **설정 완료.** 전환만 남았다 | 3번으로 |
+| `db:false` · `MOCK_MODE=true · DATABASE_URL 없음` | 환경변수가 안 들어갔다 | 대시보드 확인. **`render.yaml`을 고쳐도 대시보드가 이긴다** |
+| `db:false` · `... password authentication failed ...` | 비밀번호가 틀렸다 | 특수문자 URL 인코딩 확인 (`!` → `%21`) |
+| `db:false` · `... getaddrinfo failed ...` | 호스트를 못 찾는다 | **Direct connection(IPv6) 대신 Session pooler DSN**을 쓴다 |
+
+> 이전에는 `db`를 `MOCK_MODE=false`일 때만 검사해서, **DSN이 정확해도 목 모드면
+> 무조건 `db:false`** 였다. 설정이 틀린 것과 구분이 안 됐다.
 
 ### 완료 기준
 

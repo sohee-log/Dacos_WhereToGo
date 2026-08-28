@@ -58,10 +58,21 @@ async function request<TResponse>(
   return (await res.json()) as TResponse;
 }
 
-/** GET /health — UptimeRobot과 동일한 핑. mode:"mock"이면 아직 목 모드다. */
+/**
+ * GET /health — UptimeRobot과 동일한 핑.
+ *
+ * - `mode: "mock"` 이면 아직 목 데이터다 (`MOCK_MODE=false` 전).
+ * - `db` 는 **목 모드에서도 실제 연결을 확인한 결과**다. 그래서 전환 전에
+ *   DSN이 맞는지 알 수 있다. `db_reason` 에 왜 그 값인지가 들어 있다.
+ *
+ *   {"db": true,  "db_reason": "MOCK_MODE=true · DSN 연결 OK"}      → 전환 준비 완료
+ *   {"db": false, "db_reason": "MOCK_MODE=true · DATABASE_URL 없음"} → 환경변수 미설정
+ *   {"db": false, "db_reason": "... DSN 연결 실패: ..."}            → DSN이 틀렸다
+ */
 export async function checkHealth(): Promise<{
   status: string;
   db: boolean;
+  db_reason: string | null;
   mode: "mock" | "live";
   version: string;
 }> {

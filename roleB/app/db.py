@@ -25,6 +25,7 @@ from app.config import Settings
 log = logging.getLogger("wheretogo.db")
 
 try:  # psycopg는 W2부터 필요하다. 없으면 목 모드로만 돈다.
+    import psycopg
     from psycopg import OperationalError
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool, PoolTimeout
@@ -168,6 +169,38 @@ class Database:
         self, sql: str, params: Mapping[str, Any] | Sequence[Any] | None = None
     ) -> int:
         return self._run(sql, params, fetch=False)
+
+
+# 목 모드에서 DSN이 실제로 붙는지 확인한다 (풀은 열지 않는다).
+#
+# 왜 필요한가 — `/health`의 `db`는 `MOCK_MODE=false`일 때만 검사했다. 그래서
+# DATABASE_URL을 정확히 넣어도 목 모드에서는 **무조건 db:false**였고, C가 설정을
+# 의심하며 없는 버그를 쫓았다(2026-08-28). 더 나쁜 건 전환일이다 —
+# MOCK_MODE를 내리기 **전까지 DSN이 맞는지 알 방법이 없어서**, 내리고 나서야
+# 틀린 걸 발견하게 된다. 그때는 이미 사용자에게 503이 나가는 중이다.
+#
+# 풀을 열지 않고 한 번짜리 커넥션으로만 본다. 목 모드의 계약("풀을 열지 않는다")을
+# 그대로 지키면서 사실만 확인한다.
+DSN_PROBE_TIMEOUT = 3       # /health가 느려지면 UptimeRobot이 슬립 방지에 실패한다
+
+
+def probe_dsn(settings: Settings) -> tuple[bool, str]:
+    """(닿는가, 사람이 읽을 이유). 예외를 밖으로 내보내지 않는다."""
+    if not PSYCOPG_AVAILABLE:
+        return False, "psycopg 미설치"
+    if not settings.database_url:
+        return False, "DATABASE_URL 없음"
+    try:
+        with psycopg.connect(
+            settings.database_url, connect_timeout=DSN_PROBE_TIMEOUT
+        ) as conn:
+            conn.execute("SELECT 1")
+        return True, "DSN 연결 OK"
+    except Exception as exc:  # noqa: BLE001 - 헬스체크는 어떤 경우에도 200이다
+        # 원인이 보여야 한다. DSN에 비밀번호가 들어 있으므로 **메시지만** 남긴다.
+        head = str(exc).strip().splitlines()[0][:160]
+        log.warning("DSN 사전 점검 실패: %s", head)
+        return False, f"DSN 연결 실패: {head}"
 
 
 # 앱 전역 인스턴스. main.py의 lifespan이 open/close 한다.

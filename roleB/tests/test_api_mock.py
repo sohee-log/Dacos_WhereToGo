@@ -227,3 +227,30 @@ def test_poi_detail(client, recommend_payload):
 
 def test_poi_detail_404(client):
     assert client.get("/api/poi/nope").status_code == 404
+
+
+# --- /health 의 db_reason (2026-08-28) ----------------------------------------
+#
+# `db:false`가 "DSN이 틀렸다"인지 "아직 목 모드다"인지 구분이 안 돼서 C가
+# 설정을 의심하며 없는 버그를 쫓았다. 전환일에는 더 위험하다 — MOCK_MODE를
+# 내리기 전까지 DSN이 맞는지 알 방법이 없으면 내리고 나서야 알게 된다.
+
+
+def test_목모드에서도_이유를_말한다(client):
+    body = client.get("/health").json()
+    assert body["mode"] == "mock"
+    assert body["db_reason"], "db가 그 값인 이유가 없다"
+    assert "MOCK_MODE=true" in body["db_reason"]
+
+
+def test_DSN이_없으면_그렇게_말한다(client):
+    """설정이 안 들어간 것과 틀린 것을 구분할 수 있어야 한다."""
+    body = client.get("/health").json()
+    # 테스트 환경엔 DATABASE_URL이 없다
+    assert "DATABASE_URL 없음" in body["db_reason"] or "DSN 연결" in body["db_reason"]
+
+
+def test_health_응답이_계약_필드를_전부_갖는다(client):
+    body = client.get("/health").json()
+    assert set(body) >= {"status", "db", "db_reason", "mode", "version"}
+    assert body["status"] == "ok"      # DB가 죽어도 200·ok다 (UptimeRobot 때문)

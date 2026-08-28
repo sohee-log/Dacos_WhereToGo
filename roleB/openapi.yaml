@@ -35,9 +35,20 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, db, mode, version]
                 properties:
                   status: { type: string, example: ok }
                   db:     { type: boolean }
+                  db_reason:
+                    type: [string, "null"]
+                    description: |
+                      `db`가 그 값인 이유. `db:false`가 "DSN이 틀렸다"인지
+                      "아직 목 모드다"인지 구분하기 위한 것이다.
+                      **목 모드에서도 DSN 연결을 확인한다** — 전환 전에
+                      설정이 맞았는지 알 수 있어야 한다.
+                    example: "MOCK_MODE=true · DSN 연결 OK"
+                  mode:    { type: string, enum: [mock, live] }
+                  version: { type: string, example: "0.1.0" }
 
   /api/onboarding:
     post:
