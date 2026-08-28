@@ -133,9 +133,11 @@ CREATE TABLE IF NOT EXISTS segment_affinity (
     commercial_area_id  TEXT     NOT NULL,
     category_l2         TEXT     NOT NULL,
     gender              CHAR(1)  NOT NULL CHECK (gender IN ('M', 'F')),
-    age_band            SMALLINT NOT NULL,           -- 5세 단위: 20, 25, 30 ...
+    -- 10년 단위: 10, 20, 30, 40, 50, 60 (user_profile.age_band와 같은 축)
+    age_band            SMALLINT NOT NULL CHECK (age_band IN (10,20,30,40,50,60)),
     dow_type            SMALLINT NOT NULL CHECK (dow_type IN (0, 1)),   -- 0=평일 1=주말
-    hour_band           SMALLINT NOT NULL CHECK (hour_band BETWEEN 0 AND 5), -- 4시간 단위
+    -- 원본의 불균등 6구간. 0=00~06 1=06~11 2=11~14 3=14~17 4=17~21 5=21~24
+    hour_band           SMALLINT NOT NULL CHECK (hour_band BETWEEN 0 AND 5),
     affinity            REAL     NOT NULL CHECK (affinity BETWEEN 0 AND 1),
     sample_weight       REAL,                        -- 원본 표본 규모 (희소 셀 신뢰도)
     PRIMARY KEY (commercial_area_id, category_l2, gender, age_band, dow_type, hour_band)

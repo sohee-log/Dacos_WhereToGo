@@ -253,14 +253,30 @@ def test_hotspot_inside_and_outside_score_in_same_range():
 # --- segment_affinity 조회 축 --------------------------------------------------
 
 
-def test_hour_band_folds_into_six_buckets():
-    assert hour_band(0) == 0
-    assert hour_band(19) == 4
-    assert hour_band(23) == 5
-    assert hour_band(99) == 5          # 범위를 벗어나도 터지지 않는다
+def test_hour_band_follows_the_source_data_boundaries():
+    """균등 4시간이 아니다. 원본(상권분석 추정매출)의 불균등 6구간을 따른다.
+
+    한 칸이라도 밀리면 조회가 0행이 되고, 그건 에러가 아니라 affinity 항이
+    조용히 중립값으로 접히는 형태다. 그래서 경계를 전부 박아 둔다.
+    """
+    bands = {
+        0: range(0, 6),      # 00~06
+        1: range(6, 11),     # 06~11
+        2: range(11, 14),    # 11~14
+        3: range(14, 17),    # 14~17
+        4: range(17, 21),    # 17~21
+        5: range(21, 24),    # 21~24
+    }
+    for band, hours in bands.items():
+        for h in hours:
+            assert hour_band(h) == band, f"{h}시는 밴드 {band}이어야 한다"
+
+    assert hour_band(-1) == 0          # 범위를 벗어나도 터지지 않는다
+    assert hour_band(99) == 5
 
 
-def test_segment_age_bands_covers_both_five_year_buckets():
-    """사용자는 '20대'로 답하지만 상권분석 원본은 20·25로 쪼개져 있다."""
-    assert segment_age_bands(20) == (20, 25)
+def test_segment_age_bands_matches_the_ten_year_source_axis():
+    """상권분석 원본이 10년 단위라 온보딩 값과 축이 같다 — 한 밴드만 조회한다."""
+    assert segment_age_bands(20) == (20,)
+    assert segment_age_bands(60) == (60,)
     assert segment_age_bands(None) == ()

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
+
 # ============================================================================
 # 고정 어휘 (openapi.yaml의 enum과 1:1로 일치해야 한다 — tests/test_contract.py가 검증)
 # ============================================================================
@@ -39,13 +41,21 @@ def party_band(party_size: int) -> int:
     return 3
 
 
-# segment_affinity 조회 축 (ROLE_B §4.1). 테이블은 4시간 단위 6밴드다.
-SEGMENT_HOUR_BAND_SIZE = 4
+# segment_affinity 조회 축 (ROLE_B §4.1).
+#
+# ⚠️ 균등 4시간이 아니다. 서울시 상권분석 추정매출 원본이 **불균등 6구간**으로
+#    제공된다. `시 // 4`로 접으면 밴드가 통째로 어긋나 조회가 0행이 되는데,
+#    그건 에러가 아니라 affinity 항이 조용히 중립값으로 떨어지는 형태다.
+#
+#    밴드 0 = 00~06 · 1 = 06~11 · 2 = 11~14 · 3 = 14~17 · 4 = 17~21 · 5 = 21~24
+#
+#    각 밴드의 시작 시각이다. 끝은 다음 밴드의 시작(마지막은 24시).
+SEGMENT_HOUR_BAND_STARTS: tuple[int, ...] = (0, 6, 11, 14, 17, 21)
 
 
 def hour_band(hour: int) -> int:
-    """0~23시 → 0~5 밴드."""
-    return max(0, min(hour, 23)) // SEGMENT_HOUR_BAND_SIZE
+    """0~23시 → 0~5 밴드. 원본 데이터의 불균등 구간을 그대로 따른다."""
+    return bisect_right(SEGMENT_HOUR_BAND_STARTS, max(0, min(int(hour), 23))) - 1
 
 
 def dow_type(weekday: int) -> int:
@@ -54,14 +64,17 @@ def dow_type(weekday: int) -> int:
 
 
 def segment_age_bands(age_band: int | None) -> tuple[int, ...]:
-    """사용자 연령대(10년 단위) → segment_affinity의 5세 단위 밴드.
+    """사용자 연령대 → segment_affinity의 age_band 밴드.
 
-    사용자는 "20대"로 답하지만 상권분석 원본은 20·25로 쪼개져 있다.
-    한쪽만 조회하면 표본의 절반을 버리게 된다.
+    상권분석 원본이 **10년 단위**(10·20·30·40·50·60)로 제공된다. 온보딩이 받는
+    값과 축이 같으므로 그대로 한 밴드를 조회한다.
+
+    반환 타입이 튜플인 것은 조회부(`retrieval.fetch_segment_affinity`)가 밴드
+    묶음을 받도록 되어 있어서다. 프로필이 없으면 빈 튜플 → 조회 자체를 건너뛴다.
     """
     if age_band is None:
         return ()
-    return (age_band, age_band + 5)
+    return (age_band,)
 
 
 # 값을 관측하지 못했을 때의 중립값.

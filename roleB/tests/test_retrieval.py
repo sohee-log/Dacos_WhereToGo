@@ -193,7 +193,7 @@ def test_segment_affinity_skips_query_without_join_keys():
         ex,
         [{"commercial_area_id": None, "category_l2": "카페"}],
         gender="F",
-        age_bands=(20, 25),
+        age_bands=(20,),
         dow_type=0,
         hour_band=4,
     )
@@ -203,14 +203,14 @@ def test_segment_affinity_skips_query_without_join_keys():
 
 def test_segment_affinity_maps_area_category_pairs():
     def ex(sql, params):
-        assert params["age_bands"] == [20, 25]     # 20대는 20·25 두 밴드다
+        assert params["age_bands"] == [20]         # 원본이 10년 단위다
         return [{"commercial_area_id": "A1", "category_l2": "카페", "affinity": 0.73}]
 
     got = fetch_segment_affinity(
         ex,
         [{"commercial_area_id": "A1", "category_l2": "카페"}],
         gender="F",
-        age_bands=(20, 25),
+        age_bands=(20,),
         dow_type=0,
         hour_band=4,
     )

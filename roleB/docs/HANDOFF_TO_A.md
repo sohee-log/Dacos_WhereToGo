@@ -90,20 +90,31 @@ B가 쓰는 컬럼과 규칙이다.
 
 B가 던지는 쿼리는 이렇다.
 
+> ⚠️ **2026-08-28 정정 — 두 축이 바뀌었다.** 이전 규약(`age_band` 5세 단위 ·
+> `hour_band = 시//4`)은 원본 데이터를 열어 보기 전의 가정이었다. 실제 상권분석
+> 추정매출은 **연령 10년 단위 · 시간대 불균등 6구간**으로 제공된다. 엔진을 원본에
+> 맞췄다(`app/constants.py`). **A는 원본을 그대로 집계해 넣으면 된다 — 변환 불필요.**
+
 ```sql
 WHERE commercial_area_id = ANY(...) AND category_l2 = ANY(...)
-  AND gender = 'F' AND age_band = ANY(ARRAY[20,25])
+  AND gender = 'F' AND age_band = ANY(ARRAY[20])
   AND dow_type = 0 AND hour_band = 4
 ```
 
 | 축 | B의 규약 |
 |---|---|
 | `gender` | `'M'` / `'F'` |
-| `age_band` | **5세 단위**(20, 25, 30 …). 사용자는 "20대"로 답하지만 B가 `[20, 25]` 두 밴드를 함께 조회한다. **10년 단위 한 행으로 넣으면 25가 없어 절반이 빈다** |
+| `age_band` | **10년 단위**(10 · 20 · 30 · 40 · 50 · 60). 원본의 "10대/20대/…"를 그대로 쓴다. `user_profile.age_band`(온보딩)와 같은 축이라 변환이 없다. **60대 이상은 `60`으로 접는다** |
 | `dow_type` | `0`=평일 · `1`=주말. **토·일이 주말** |
-| `hour_band` | `시 // 4` → 0~5. 즉 **밴드 0 = 00~03시, 밴드 4 = 16~19시, 밴드 5 = 20~23시** |
+| `hour_band` | 원본의 **불균등 6구간을 그대로**. `0`=00\~06 · `1`=06\~11 · `2`=11\~14 · `3`=14\~17 · `4`=17\~21 · `5`=21\~24. **`시 // 4`로 계산하지 말 것** |
 | `affinity` | 0~1 정규화. `CHECK` 제약이 걸려 있으니 원본 매출을 그대로 넣으면 INSERT가 실패한다 |
 | `category_l2` | `poi.category_l2`와 **문자열이 정확히 같아야** 조인된다. 업종코드 매핑이 여기서 갈린다 |
+
+**축이 어긋나면 에러가 안 난다.** 조회가 0행이 되고 affinity 항(가중치 0.22,
+단일 최대)이 조용히 중립값으로 접힌다. 화면으로도 로그로도 구분이 안 된다.
+그래서 `db/migrations/003_segment_axis.sql`로 `age_band`에 `CHECK`를 걸어 뒀다 —
+5세 단위로 넣으면 **INSERT가 실패**한다. 조용한 0행보다 시끄러운 실패가 낫다.
+적재 전에 `psql "$DATABASE_URL" -f db/migrations/003_segment_axis.sql`을 한 번 돌린다.
 
 ### 2-3. `hotspot_snapshot` — 15분 폴링 (A3-4)
 
@@ -296,7 +307,7 @@ pytest tests/test_live_db.py -v
 
 - [ ] `commercial_area` 폴리곤 적재 → `poi.commercial_area_id` 공간조인 🔴
 - [ ] `tag_embedding` 16행 (분위기 10 + 목적 6, `poi.tag_vector`와 같은 공간) 🔴
-- [ ] `segment_affinity` — 5세 단위 age_band · `hour_band = 시//4` · affinity 0~1 정규화
+- [ ] `segment_affinity` — **10년 단위** age_band · **불균등 6구간** hour_band(00\~06/06\~11/11\~14/14\~17/17\~21/21\~24) · affinity 0~1 정규화
 - [ ] `compute_quality` → `poi.quality_score`
 - [ ] `poi.hotspot_code` 매핑 (**1km 밖은 NULL 유지**)
 - [ ] `hotspot_snapshot.fcst` + `weather` 원본 그대로
