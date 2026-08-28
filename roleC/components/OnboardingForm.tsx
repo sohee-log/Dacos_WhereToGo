@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Purpose, Atmosphere, OnboardingRequest, OnboardingResponse } from '@/lib/types';
 import { PURPOSES, ATMOSPHERES, AGE_BANDS } from '@/lib/constants';
 import { submitOnboarding, ApiError } from '@/lib/api';
+import { saveUserId } from '@/lib/session';
 
 interface OnboardingFormProps {
   onSuccess?: (userId: string, moods: string[]) => void;
@@ -70,6 +71,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
       } else {
         // 백업용 다이렉트 이동 시에도 주소창 뒤에 무드 리스트를 강제로 태웁니다.
         const moodQuery = collectedMoods.join(',');
+        saveUserId(data.user_id); // 로컬스토리지에 user_id 저장
         window.location.href = `/recommend?user_id=${data.user_id}&mood=${encodeURIComponent(moodQuery)}`;
       }
     } catch (err: unknown) {

@@ -9,7 +9,7 @@ type Place = RecommendResponse['results'][number];
 
 interface ResultCardProps {
   place: Place;
-  logId: number; // C4-2: /api/feedback 연동에 필요
+  logId: number; 
 }
 
 const EXPLAIN_MODE_LABEL: Record<Place['explain_mode'], string> = {
@@ -20,19 +20,34 @@ const EXPLAIN_MODE_LABEL: Record<Place['explain_mode'], string> = {
 
 export default function ResultCard({ place, logId }: ResultCardProps) {
   const { score_breakdown } = place;
+  
+  // 상태 관리
   const [clicked, setClicked] = useState(false);
+  const [rated, setRated] = useState<number | null>(null); // 별점 상태 추가
 
-  // 클릭 로깅 — 실패해도(404 포함) 화면 흐름은 막지 않는다 (postFeedback이 내부에서 처리)
-  //
-  // `clicked`는 **클릭한 poi_id들의 배열**이다. boolean으로 보내면 422고,
-  // 아래 .catch()가 그걸 삼켜서 recommendation_log가 통째로 비어 있었다.
-  // 카드 하나가 한 건을 보내므로 원소 하나짜리 배열이 맞다 — 서버가 누적한다.
+  // 1. 카드 클릭 로깅 (계약 위반 수정 완료)
   const handleClick = () => {
     if (clicked) return;
     setClicked(true);
-    postFeedback({ log_id: logId, clicked: [place.poi_id] }).catch((err) => {
-      console.error('피드백 전송 실패', err);
+    
+    // 수정됨: clicked를 boolean이 아닌 string[] 배열로 전송[cite: 1]
+    postFeedback({ 
+      log_id: logId, 
+      clicked: [place.poi_id] 
+    }).catch((err) => {
+      console.error('클릭 로깅 실패', err);
     });
+  };
+
+  // 2. 별점(만족도) 전송 핸들러[cite: 1]
+  const handleRate = (score: number) => {
+    setRated(score);
+    
+    postFeedback({
+      log_id: logId,
+      selected: place.poi_id, // 선택한 poi_id (문자열)[cite: 1]
+      feedback: score,        // 1~5점 (satisfaction 아님)[cite: 1]
+    }).catch((err) => console.error('만족도 전송 실패', err)); // 실패해도 화면 멈춤 방지[cite: 1]
   };
 
   const hasEvidence = place.evidence && place.evidence.length > 0;
@@ -75,7 +90,6 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
         )}
       </div>
 
-      {/* evidence가 빈 배열이면 인용 영역을 통째로 숨긴다 (핸드오프 §3-2) */}
       {hasEvidence && (
         <div className="space-y-1.5 border-t border-slate-100 pt-3">
           <span className="text-[10px] font-bold text-slate-400 block">리뷰 근거 (Evidence)</span>
@@ -84,6 +98,30 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
               &ldquo;{ev.text}&rdquo; <span className="text-[9px] text-slate-400 not-italic">({ev.source})</span>
             </blockquote>
           ))}
+        </div>
+      )}
+
+      {/* --- 사후 만족도 UI (카드를 클릭했을 때만 나타남) --- */}
+      {clicked && (
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 mt-1">
+          <span className="text-[10px] text-slate-400">이 추천 어땠나요?</span>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={(e) => { 
+                e.stopPropagation(); // ⭐️ 중요: 카드 전체 클릭 이벤트와 중복 방지[cite: 1]
+                handleRate(n); 
+              }}
+              disabled={rated !== null}
+              aria-label={`${n}점`}
+              className={`text-lg transition-colors ${
+                rated !== null && n <= rated ? 'text-amber-400' : 'text-slate-200 hover:text-amber-200'
+              }`}
+            >
+              ★
+            </button>
+          ))}
+          {rated !== null && <span className="text-[10px] text-emerald-500 ml-1">감사합니다</span>}
         </div>
       )}
     </div>
