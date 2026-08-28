@@ -23,17 +23,23 @@ from typing import Any
 
 log = logging.getLogger("wheretogo.logging")
 
+# 로그 INSERT.
+#
+# user_id는 user_profile을 참조한다. 온보딩을 건너뛴 사용자는 프로필 행이 없고,
+# 그대로 INSERT하면 FK 위반으로 로그가 통째로 날아간다. 있을 때만 채운다.
+#
+# **존재 확인을 스칼라 서브쿼리로 접어 넣었다.** 예전에는 SELECT 한 번 + INSERT
+# 한 번이었는데, Render(싱가포르)-Supabase(서울) 사이에서는 왕복 한 번이
+# 70~90ms다. 추천 한 건의 지연 90%가 왕복 횟수에서 나온다(PERF.md).
+# 프로필이 없으면 서브쿼리가 NULL을 주므로 동작은 이전과 같다.
 INSERT_LOG_SQL = """
 INSERT INTO recommendation_log
     (user_id, requested_at, context, candidates, explain_mode, latency_ms)
 VALUES
-    (%(user_id)s, now(), %(context)s, %(candidates)s, %(explain_mode)s, %(latency_ms)s)
+    ((SELECT user_id FROM user_profile WHERE user_id = %(user_id)s),
+     now(), %(context)s, %(candidates)s, %(explain_mode)s, %(latency_ms)s)
 RETURNING log_id
 """
-
-# user_id는 user_profile을 참조한다. 온보딩을 건너뛴 사용자는 프로필 행이 없고,
-# 그대로 INSERT하면 FK 위반으로 로그가 통째로 날아간다. 있을 때만 채운다.
-USER_EXISTS_SQL = "SELECT 1 FROM user_profile WHERE user_id = %(user_id)s"
 
 # `clicked`만 덧쓰기가 아니라 **합집합**이다.
 #
@@ -99,11 +105,10 @@ def write_recommendation_log(
 ) -> int | None:
     """log_id를 돌려준다. 실패하면 None (추천은 그대로 나간다)."""
     try:
-        exists = executor(USER_EXISTS_SQL, {"user_id": user_id})
         rows = executor(
             INSERT_LOG_SQL,
             {
-                "user_id": user_id if exists else None,
+                "user_id": user_id,
                 "context": json.dumps(context, ensure_ascii=False, default=str),
                 "candidates": json.dumps(candidates, ensure_ascii=False, default=str),
                 "explain_mode": explain_mode,
