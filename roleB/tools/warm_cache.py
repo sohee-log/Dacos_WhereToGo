@@ -60,6 +60,41 @@ def _modes(data: dict[str, Any] | None) -> list[str]:
     return [r.get("explain_mode", "?") for r in data.get("results", [])]
 
 
+def onboard_all(base_url: str, rows, interval: float) -> dict[str, str]:
+    """시나리오마다 `POST /api/onboarding`을 먼저 태우고 user_id를 받아 둔다.
+
+    **온보딩 없이 추천을 부르면 개인화 항 세 개가 통째로 중립이 된다** —
+    segment_affinity(0.22) · taste_similarity(0.16) · live_segment_match(0.10).
+    응답은 200이고 결과도 5건 나온다. 화면으로는 구분이 안 된다.
+
+    그래서 워밍이 **"개인화가 죽은 결과"를 캐시에 넣고 있었다.** 발표 당일
+    그 캐시가 그대로 나가면 시연이 통째로 비개인화 결과가 된다. 실측으로
+    잡았다(2026-08-28): 순위를 가르는 가중치 0.43 → 프로필을 태우면 0.75.
+
+    `user_id`는 서버가 만든다(온보딩 응답). 시나리오의 `user_id()`는 DB에
+    직접 넣을 때(`tools/scenario_report`)만 쓴다.
+    """
+    endpoint = base_url.rstrip("/") + "/api/onboarding"
+    mapping: dict[str, str] = {}
+    skipped: list[str] = []
+    for s in rows:
+        payload = sc.onboarding_payload(s)
+        if payload is None:
+            skipped.append(s.id)
+            continue
+        status, data, reason = _post(endpoint, payload)
+        if status == 200 and data and data.get("user_id"):
+            mapping[s.id] = data["user_id"]
+        else:
+            print(f"  ⚠️ {s.id} 온보딩 실패 {status} {reason} — 비개인화로 워밍된다")
+        if interval:
+            time.sleep(interval)
+    if skipped:
+        print(f"  ⚠️ 프로필 축 없음: {', '.join(skipped)} — 비개인화로 워밍된다")
+    print(f"[온보딩] {len(mapping)}/{len(rows)}건 프로필 확보\n")
+    return mapping
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8000")
@@ -88,10 +123,16 @@ def main() -> int:
     no_evidence: list[str] = []
     last_modes: dict[str, list[str]] = {}
 
+    # 프로필을 먼저 만든다. 이게 없으면 개인화 항 3개가 중립인 결과를 캐시에 넣는다.
+    user_ids = onboard_all(args.url, rows, interval)
+
     for p in range(args.passes):
         label = "워밍" if p == 0 else f"확인 {p}"
         for s in rows:
-            status, data, reason = _post(endpoint, sc.to_payload(s, now))
+            payload = sc.to_payload(s, now)
+            if s.id in user_ids:
+                payload["user_id"] = user_ids[s.id]
+            status, data, reason = _post(endpoint, payload)
             if status != 200:
                 errors[status] += 1
                 print(f"  ❌ {s.id} {status} {reason}")

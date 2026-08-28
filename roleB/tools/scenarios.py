@@ -34,6 +34,14 @@ class Scenario:
     weekday: int          # 0=월 … 6=일
     zone: str | None = None
 
+    # 온보딩 프로필. **없으면 개인화 항 세 개가 통째로 중립이 된다** —
+    # segment_affinity(0.22) · taste_similarity(0.16) · live_segment_match(0.10).
+    # 응답은 200이라 화면으로는 구분이 안 되고, 캐시 워밍이 '개인화가 죽은 결과'를
+    # 데워 둔다. 실제로 그러고 있었다 (2026-08-28).
+    gender: str | None = None
+    age_band: int | None = None
+    weather_sensitivity: int = 2
+
     def user_id(self) -> str:
         """시나리오마다 다른 사용자로 보낸다.
 
@@ -59,9 +67,45 @@ def load(path: str | None = None) -> list[Scenario]:
             hour=int(r.get("hour", 19)),
             weekday=int(r.get("weekday", 4)),
             zone=r.get("zone"),
+            gender=r.get("gender"),
+            age_band=(int(r["age_band"]) if r.get("age_band") is not None else None),
+            weather_sensitivity=int(r.get("weather_sensitivity", 2)),
         )
         for r in rows
     ]
+
+
+# 온보딩 태그는 시나리오의 목적에서 끌어온다. 취향 축이 사람마다 달라야
+# taste_similarity가 의미를 갖는데, 시나리오에 태그를 또 손으로 적으면
+# 고정 어휘(constants.py가 원본이다)와 어긋나기 쉽다.
+_ATMOSPHERE_BY_PURPOSE: dict[str, list[str]] = {
+    "데이트": ["감성적인", "아늑한"],
+    "친구모임": ["활기찬", "트렌디한"],
+    "혼자": ["조용한", "아늑한"],
+    "가족": ["넓은", "조용한"],
+    "작업": ["조용한", "넓은"],
+    "회식": ["활기찬", "넓은"],
+}
+
+
+def onboarding_payload(s: Scenario) -> dict[str, Any] | None:
+    """`POST /api/onboarding` 본문. 프로필 축이 없는 시나리오면 None.
+
+    시나리오를 **온보딩 없이** 추천에 태우면 개인화 항 세 개가 중립이 된다.
+    측정(`scenario_report`)과 워밍(`warm_cache`)이 둘 다 이걸 먼저 태워야
+    "재는 경로"와 "도는 경로"가 같아진다 — 어긋나서 겪은 사고가 이미 있다
+    (LLM_QUOTA.md 참조: 프로브는 httpx, 앱은 urllib을 써서 403을 못 잡았다).
+    """
+    if not s.gender or s.age_band is None:
+        return None
+    return {
+        "gender": s.gender,
+        "age_band": s.age_band,
+        "atmosphere_tags": _ATMOSPHERE_BY_PURPOSE.get(s.purpose, ["조용한"]),
+        "purpose_tags": [s.purpose],
+        "budget_band": s.budget_band,
+        "weather_sensitivity": s.weather_sensitivity,
+    }
 
 
 def next_occurrence(weekday: int, hour: int, now: datetime) -> datetime:

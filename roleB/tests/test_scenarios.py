@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.constants import PURPOSE_TAGS, ZONES
+from app.constants import AGE_BANDS, ATMOSPHERE_TAGS, PURPOSE_TAGS, ZONES
 from tools import scenarios as sc
 
 NOW = datetime(2026, 8, 10, 15, 0, tzinfo=sc.KST)   # 2026-08-10 은 월요일
@@ -131,3 +131,53 @@ def test_percentiles_do_not_care_about_input_order():
     a = sc.percentiles([5.0, 1.0, 3.0])
     b = sc.percentiles([1.0, 3.0, 5.0])
     assert a == b
+
+
+# --- 온보딩 프로필 축 (2026-08-28) --------------------------------------------
+#
+# 시나리오를 온보딩 없이 추천에 태우면 개인화 항 세 개가 통째로 중립이 된다.
+# 응답은 200이고 결과도 5건 나와서 화면으로는 구분이 안 된다. 실제로 캐시
+# 워밍이 "개인화가 죽은 결과"를 데워 두고 있었다 — 실측으로 잡았다.
+#   순위를 가르는 가중치  프로필 없음 0.43  →  프로필 있음 0.75
+
+
+def test_모든_시나리오가_프로필_축을_갖는다():
+    """하나라도 빠지면 그 시나리오만 조용히 비개인화로 돈다."""
+    for s in sc.load():
+        assert s.gender in ("M", "F"), f"{s.id} gender 없음"
+        assert s.age_band in AGE_BANDS, f"{s.id} age_band={s.age_band}"
+        assert 1 <= s.weather_sensitivity <= 3, f"{s.id} weather_sensitivity"
+
+
+def test_온보딩_본문이_계약_어휘를_지킨다():
+    """어휘가 새면 온보딩에서 422다. constants.py가 원본이다."""
+    for s in sc.load():
+        payload = sc.onboarding_payload(s)
+        assert payload is not None, f"{s.id}"
+        assert payload["gender"] in ("M", "F")
+        assert payload["age_band"] in AGE_BANDS
+        assert 1 <= payload["budget_band"] <= 4
+        assert payload["atmosphere_tags"], f"{s.id} 분위기 태그가 비었다"
+        for t in payload["atmosphere_tags"]:
+            assert t in ATMOSPHERE_TAGS, f"{s.id} 어휘 밖: {t}"
+        for t in payload["purpose_tags"]:
+            assert t in PURPOSE_TAGS, f"{s.id} 어휘 밖: {t}"
+
+
+def test_프로필_축이_없으면_None을_돌려준다():
+    """옛 형식 시나리오 파일을 그대로 태우면 조용히 비개인화가 된다.
+    호출부가 그 상태를 알아채고 경고할 수 있어야 한다."""
+    bare = sc.Scenario(
+        id="X", desc="", purpose="데이트", party_size=2, budget_band=2,
+        lat=37.5, lng=127.0, hour=19, weekday=4,
+    )
+    assert sc.onboarding_payload(bare) is None
+
+
+def test_연령대_6종이_시나리오에_전부_나온다():
+    """M3(전 세그먼트 커버) 검증이 한 연령대에만 쏠리면 의미가 없다."""
+    assert {s.age_band for s in sc.load()} == set(AGE_BANDS)
+
+
+def test_성별_두_종이_모두_나온다():
+    assert {s.gender for s in sc.load()} == {"M", "F"}
