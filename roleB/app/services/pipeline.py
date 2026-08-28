@@ -49,7 +49,7 @@ from app.services import explain, kma, live_signals, logging_svc, rag, retrieval
 from app.services.context_fit import DEFAULT_WEATHER_SENSITIVITY
 from app.services.explain import template_reason
 from app.services.live_signals import HotspotSignals
-from app.services.scoring import build_terms, total_score
+from app.services.scoring import build_terms, segment_reference, total_score
 from app.timeutil import parse_visit_at
 
 log = logging.getLogger("wheretogo.pipeline")
@@ -256,6 +256,13 @@ def build_live_recommendation(
             hour_band=hour_band(visit_dt.hour),
         )
 
+    # affinity는 "품질"이 아니라 "비중"이라 절대값으로 중립값과 비교할 수 없다.
+    # 이번 후보들의 중앙값을 기준점으로 넘긴다 (scoring.segment_affinity_term).
+    affinity_ref = segment_reference(
+        segment_map.get((c.get("commercial_area_id"), c.get("category_l2")))
+        for c in found.candidates
+    )
+
     # --- ② 스코어링 --------------------------------------------------------
     scored: list[tuple[float, dict[str, Any], dict[str, float], float]] = []
     for poi in found.candidates:
@@ -267,6 +274,7 @@ def build_live_recommendation(
             affinity=segment_map.get(
                 (poi.get("commercial_area_id"), poi.get("category_l2"))
             ),
+            affinity_ref=affinity_ref,
             # 코사인은 DB가 계산했다(retrieval.CANDIDATE_SQL). None이면 관측 불가.
             taste_sim=poi.get("taste_sim"),
             user_age_band=age_band,
