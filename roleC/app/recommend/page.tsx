@@ -10,6 +10,8 @@ import RequestForm from '@/components/RequestForm';
 import ScoreDebug from '@/components/ScoreDebug';
 import { Purpose, RecommendRequest, RecommendResponse } from '@/lib/types';
 import { postRecommend, ApiError } from '@/lib/api';
+import { loadUserId } from '@/lib/session';
+
 
 const DEFAULT_LOCATION = { lat: 37.5340, lng: 126.9946 }; // 이태원 인근 폴백
 
@@ -21,7 +23,7 @@ function defaultVisitAt(): string {
 
 function RecommendContent() {
   const searchParams = useSearchParams();
-  const userId = searchParams.get('user_id');
+  const userId = searchParams.get('user_id') ?? loadUserId();
   const debug = searchParams.get('debug') === '1'; // C4-4: ?debug=1 로만 노출
 
   const [data, setData] = useState<RecommendResponse | null>(null);
