@@ -154,3 +154,22 @@ def test_empty_fields_are_sent_as_null_for_coalesce():
     assert captured["clicked"] is None
     assert captured["selected"] is None
     assert captured["feedback"] == 4
+
+
+def test_clicked_is_unioned_not_overwritten():
+    """카드마다 한 건씩 오는데 덧쓰기면 두 번째 클릭이 첫 번째를 지운다.
+
+    빈 값을 COALESCE로 막아 놓고 값이 있는 경우에 같은 사고를 내면 더 안 보인다.
+    SQL이 합집합인지, 그리고 순서를 지키는지(WITH ORDINALITY) 형태로 박아 둔다.
+    """
+    captured: dict = {}
+
+    def ex(sql, params):
+        captured["sql"] = sql
+        return [{"log_id": 7}]
+
+    record_feedback(ex, log_id=7, clicked=["p_1"], selected=None, feedback=None)
+    sql = captured["sql"]
+    assert "unnest(" in sql
+    assert "WITH ORDINALITY" in sql          # 클릭 순서를 잃지 않는다
+    assert "COALESCE(%(clicked)s, clicked)" not in sql   # 덧쓰기로 돌아가지 말 것

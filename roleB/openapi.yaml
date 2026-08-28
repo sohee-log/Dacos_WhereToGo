@@ -276,7 +276,11 @@ components:
 
     Context:
       type: object
-      required: [weather, pm25_grade, feels_like]
+      # 값이 null일 수 있는 것과 키가 없을 수 있는 것은 다르다.
+      # 실측(2026-08-28): 10개 키가 언제나 실린다. C가 옵셔널 체이닝을 쓸 필요가 없다.
+      required:
+        [weather, pm25_grade, feels_like, rain_prob, sunset, hotspot,
+         congest_now, congest_forecast_at_visit, age_mix_top, weather_source]
       properties:
         weather:
           type: string
@@ -291,10 +295,10 @@ components:
           format: float
           example: 27.4
         rain_prob:
-          type: number
+          type: [number, "null"]
           format: float
         sunset:
-          type: string
+          type: [string, "null"]
           example: "19:42"
         hotspot:
           type: [string, "null"]
@@ -373,7 +377,7 @@ components:
       type: object
       required:
         [poi_id, name, category, lat, lng, distance_m, score,
-         score_breakdown, reason, evidence, is_exploration, explain_mode]
+         score_breakdown, reason, evidence, is_exploration, explain_mode, image_url]
       properties:
         poi_id:     { type: string }
         name:       { type: string }
@@ -399,7 +403,9 @@ components:
 
     RecommendResponse:
       type: object
-      required: [context, results, log_id]
+      # low_confidence / radius_expanded 는 언제나 실린다(기본값이 있다).
+      # 옵셔널로 두면 C가 undefined 분기를 만들게 되는데 그런 응답은 존재하지 않는다.
+      required: [context, results, log_id, low_confidence, radius_expanded]
       properties:
         context: { $ref: "#/components/schemas/Context" }
         results:
@@ -433,16 +439,20 @@ components:
 
     PoiDetail:
       type: object
-      required: [poi_id, name, lat, lng]
+      required:
+        [poi_id, name, category_l1, category_l2, lat, lng, dong, zone,
+         business_hours, outdoor_exposure, group_capacity, noise_level, price_band,
+         purpose_tags, atmosphere_tags, quality_score, mention_count,
+         attr_confidence, reviews, image_url]
       properties:
         poi_id:           { type: string }
         name:             { type: string }
-        category_l1:      { type: string }
-        category_l2:      { type: string }
+        category_l1:      { type: [string, "null"] }
+        category_l2:      { type: [string, "null"] }
         lat:              { type: number, format: double }
         lng:              { type: number, format: double }
-        dong:             { type: string }
-        zone:             { type: string, enum: [itaewon, yongsan_stn, huam, ichon, cheongpa] }
+        dong:             { type: [string, "null"] }
+        zone:             { type: [string, "null"], enum: [itaewon, yongsan_stn, huam, ichon, cheongpa] }
         business_hours:   { type: [object, "null"], additionalProperties: true }
         # null = 리뷰에 근거가 없어 아직 모른다. 0 / 4로 그리지 말 것 (A3-2)
         outdoor_exposure: { type: [number, "null"], format: float, minimum: 0, maximum: 1 }

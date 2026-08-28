@@ -35,9 +35,26 @@ RETURNING log_id
 # 그대로 INSERT하면 FK 위반으로 로그가 통째로 날아간다. 있을 때만 채운다.
 USER_EXISTS_SQL = "SELECT 1 FROM user_profile WHERE user_id = %(user_id)s"
 
+# `clicked`만 덧쓰기가 아니라 **합집합**이다.
+#
+# C는 카드를 누를 때마다 한 건씩 보낸다. 덧쓰기면 두 번째 클릭이 첫 번째를
+# 지운다 — 이 모듈이 COALESCE로 막으려던 것과 정확히 같은 사고이고, 값이 있는
+# 경우에만 일어나서 더 안 보인다. 원소 하나짜리 배열이 와도 안전해야 한다.
+#
+# WITH ORDINALITY + MIN(ord)로 **처음 등장한 순서**를 지킨다. DISTINCT만 쓰면
+# 순서가 매번 달라져서 나중에 클릭 순서를 분석할 수 없다.
 UPDATE_FEEDBACK_SQL = """
 UPDATE recommendation_log
-SET clicked  = COALESCE(%(clicked)s, clicked),
+SET clicked  = CASE
+        WHEN %(clicked)s IS NULL THEN clicked
+        ELSE ARRAY(
+            SELECT t.x
+            FROM unnest(COALESCE(clicked, '{}'::TEXT[]) || %(clicked)s::TEXT[])
+                 WITH ORDINALITY AS t(x, ord)
+            GROUP BY t.x
+            ORDER BY MIN(t.ord)
+        )
+    END,
     selected = COALESCE(%(selected)s, selected),
     feedback = COALESCE(%(feedback)s, feedback)
 WHERE log_id = %(log_id)s
@@ -109,6 +126,9 @@ def record_feedback(
 
     빈 값은 덮어쓰지 않는다(`COALESCE`). C가 클릭 → 선택 → 만족도를 **여러 번에
     나눠 보내기** 때문이다. 매번 전체를 보내게 하면 앞선 클릭 기록이 지워진다.
+
+    `clicked`는 덧쓰기가 아니라 **합집합**이다 — 카드마다 한 건씩 보내도
+    앞선 클릭이 남는다. 순서는 처음 등장한 순서를 지킨다.
     """
     rows = executor(
         UPDATE_FEEDBACK_SQL,

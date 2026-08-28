@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Purpose, Atmosphere, OnboardingRequest, OnboardingResponse } from '@/lib/types';
-import { PURPOSES, ATMOSPHERES } from '@/lib/constants';
+import { PURPOSES, ATMOSPHERES, AGE_BANDS } from '@/lib/constants';
 import { submitOnboarding, ApiError } from '@/lib/api';
 
 interface OnboardingFormProps {
@@ -16,7 +16,10 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
 
   // 1. 온보딩 상태 관리 (5문항 이하 제약 준수)
   const [gender, setGender] = useState<'M' | 'F'>('M');
-  const [ageBand, setAgeBand] = useState<number>(20);
+  // 타입을 number로 두면 서버가 받지 않는 값(25, 45 …)을 보내도 컴파일이 통과한다.
+  // 계약 타입에서 직접 끌어와 10/20/…/60만 들어가게 한다.
+  type AgeBand = OnboardingRequest['age_band'];
+  const [ageBand, setAgeBand] = useState<AgeBand>(20);
   const [selectedAtmospheres, setSelectedAtmospheres] = useState<Atmosphere[]>([]);
   const [selectedPurposes, setSelectedPurposes] = useState<Purpose[]>([]);
   const [budgetBand, setBudgetBand] = useState<number>(2);
@@ -115,15 +118,18 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
               여성
             </button>
           </div>
+          {/* 50대·60대가 빠져 있었다. 엔진과 segment_affinity는 60까지 받는데
+              화면이 40에서 끊기면 그 사용자들이 40대로 집계된다. */}
           <select
             value={ageBand}
-            onChange={(e) => setAgeBand(Number(e.target.value))}
+            onChange={(e) => setAgeBand(Number(e.target.value) as AgeBand)}
             className="text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100 font-semibold text-slate-700 focus:outline-none"
           >
-            <option value={10}>10대</option>
-            <option value={20}>20대</option>
-            <option value={30}>30대</option>
-            <option value={40}>40대 이상</option>
+            {AGE_BANDS.map((band) => (
+              <option key={band} value={band}>
+                {band === 60 ? '60대 이상' : `${band}대`}
+              </option>
+            ))}
           </select>
         </div>
       </div>
