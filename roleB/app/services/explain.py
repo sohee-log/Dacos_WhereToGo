@@ -85,10 +85,22 @@ WHERE cache_key = %(cache_key)s
 RETURNING payload
 """
 
+# ⚠️ RETURNING 이 필수다. 이 SQL은 `executor`(= Database.fetch_all)로 나가는데
+# 그 함수는 결과를 읽는다. RETURNING 없이 INSERT를 보내면
+#     "the last operation didn't produce records (command status: INSERT 0 1)"
+# 로 예외가 나고, store_cache 의 except 가 그걸 삼키면서 **트랜잭션이 롤백된다.**
+#
+# 그래서 `explanation_cache` 에 **한 번도 행이 저장된 적이 없었다**(2026-08-28 발견).
+# B5-3(캐시 히트 시 LLM 0회)과 B6-4(발표 전날 캐시 워밍)가 통째로 죽어 있었고,
+# 겉으로는 매번 explain_mode: "llm" 이라 정상으로 보였다 — 무료 티어 데모의
+# 최대 안전장치가 작동하지 않는 상태였다.
+#
+# 이 모듈의 다른 쓰기(CACHE_GET_SQL)는 UPDATE ... RETURNING 이라 괜찮았다.
 CACHE_PUT_SQL = """
 INSERT INTO explanation_cache (cache_key, payload)
 VALUES (%(cache_key)s, %(payload)s)
 ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload
+RETURNING cache_key
 """
 
 

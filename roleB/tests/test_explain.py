@@ -7,10 +7,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.config import Settings
-from app.services import llm
+from app.services import explain, llm
 from app.services.explain import (
     RESPONSE_SCHEMA,
     build_prompt,
@@ -266,3 +268,54 @@ def test_template_reason_uses_only_available_terms():
 
 def test_template_reason_never_returns_empty():
     assert template_reason({}, {}, "데이트", {}).strip()
+
+# --- 캐시 쓰기는 RETURNING 이 있어야 한다 (2026-08-28) -------------------------
+#
+# executor(= Database.fetch_all)는 결과를 읽는다. RETURNING 없이 INSERT를 보내면
+#   "the last operation didn't produce records (command status: INSERT 0 1)"
+# 로 예외가 나고, store_cache의 except가 삼키면서 트랜잭션이 롤백된다.
+#
+# 그래서 explanation_cache에 **한 번도 행이 저장된 적이 없었다.** B5-3(캐시 히트 시
+# LLM 0회)과 B6-4(발표 전날 캐시 워밍)가 통째로 죽어 있었고, 겉으로는 매번
+# explain_mode: "llm"이라 정상으로 보였다.
+
+
+def test_캐시_쓰기_SQL에_RETURNING이_있다():
+    """없으면 저장이 조용히 롤백된다. 실 DB에서만 나는 종류라 형태로 박는다."""
+    assert "RETURNING" in explain.CACHE_PUT_SQL.upper()
+
+
+def test_executor로_나가는_쓰기는_전부_RETURNING을_갖는다():
+    """같은 사고가 다른 모듈에서 재발하지 않게 전수로 본다."""
+    import pathlib
+    import re
+
+    app_dir = pathlib.Path(explain.__file__).resolve().parent.parent
+    offenders = []
+    for f in sorted(app_dir.rglob("*.py")):
+        src = f.read_text(encoding="utf-8")
+        for m in re.finditer(r'(\w+_SQL)\s*=\s*"""(.*?)"""', src, re.S):
+            name, sql = m.group(1), m.group(2)
+            head = sql.strip().split()[0].upper() if sql.strip() else ""
+            if head in ("INSERT", "UPDATE", "DELETE") and "RETURNING" not in sql.upper():
+                offenders.append(f"{f.name}:{name}")
+    assert not offenders, f"RETURNING 없는 쓰기: {offenders}"
+
+
+def test_캐시_왕복_저장하고_읽는다():
+    """가짜 executor로도 저장 -> 조회 계약은 지켜져야 한다."""
+    store: dict[str, str] = {}
+
+    def ex(sql, params):
+        if "INSERT INTO explanation_cache" in sql:
+            store[params["cache_key"]] = params["payload"]
+            return [{"cache_key": params["cache_key"]}]
+        if "UPDATE explanation_cache" in sql:
+            raw = store.get(params["cache_key"])
+            return [{"payload": json.loads(raw)}] if raw else []
+        return []
+
+    payload = {"items": [{"poi_id": "p_1", "reason": "r", "quote": "q"}], "model": "m"}
+    explain.store_cache(ex, "k1", payload)
+    assert explain.fetch_cached(ex, "k1") == payload
+    assert explain.fetch_cached(ex, "없는키") is None
