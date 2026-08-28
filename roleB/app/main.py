@@ -98,18 +98,26 @@ def health() -> HealthResponse:
     DB가 죽어도 status는 ok로 둔다 — 목 모드로는 서비스가 계속 돌기 때문이고,
     여기서 500을 내면 UptimeRobot이 슬립 방지 핑을 실패로 기록한다.
     """
-    from app.db import get_db
+    from app.db import get_db, probe_dsn
 
-    db_ok = False
-    if not settings.mock_mode:
+    if settings.mock_mode:
+        # 목 모드에서도 DSN이 붙는지 본다. 풀은 열지 않는다 — 목 모드의 계약은
+        # 그대로 지키면서 "설정이 맞았는지"만 답한다. 이게 없으면 전환일에
+        # MOCK_MODE를 내려 봐야 DSN이 틀렸다는 걸 알게 된다.
+        db_ok, reason = probe_dsn(settings)
+        reason = f"MOCK_MODE=true · {reason}"
+    else:
         try:
             db_ok = get_db().healthy()
+            reason = "풀 연결 OK" if db_ok else "풀에 닿지 못했다"
         except Exception:  # 풀 미초기화 등. 헬스체크는 어떤 경우에도 200이다
             db_ok = False
+            reason = "DB 풀이 초기화되지 않았다"
 
     return HealthResponse(
         status="ok",
         db=db_ok,
+        db_reason=reason,
         mode="mock" if settings.mock_mode else "live",
         version=settings.app_version,
     )

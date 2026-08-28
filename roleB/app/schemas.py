@@ -81,6 +81,10 @@ class ErrorResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     db: bool = False
+    # 왜 그 값인지. `db:false`가 "DSN이 틀렸다"인지 "아직 목 모드다"인지
+    # 구분이 안 돼서 C가 없는 버그를 쫓았다 (2026-08-28). 전환일에는 더 위험하다 —
+    # MOCK_MODE를 내리기 전까지 DSN이 맞는지 알 방법이 없으면, 내리고 나서야 안다.
+    db_reason: str | None = None
     mode: Literal["mock", "live"] = "mock"
     version: str = "0.1.0"
 
