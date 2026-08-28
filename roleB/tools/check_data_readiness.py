@@ -648,6 +648,9 @@ def main() -> int:
         render(SIDE_CHECKS)
         print(f"\n  {snapshot_age(cur)}")
 
+        print("\n세그먼트 축 점검 (조인은 되는데 조회가 0행이면 여기다)")
+        segment_axis_audit(cur, conn)
+
         print("\nA3-2 LLM 속성 추출 (T1 전용 · 분모가 위와 다르다)")
         attr_extraction_progress(cur, conn, args.conf_min)
 

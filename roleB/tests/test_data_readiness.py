@@ -347,3 +347,15 @@ def test_세그먼트_점검_SQL이_엔진의_축을_전부_건다():
     check = next(c for c in rd.CHECKS if c.term == "segment_affinity")
     for axis in ("s.gender", "s.age_band", "s.dow_type", "s.hour_band"):
         assert axis in check.sql, f"{axis} 축이 안 걸려 있다"
+
+
+def test_축_점검이_리포트에_실제로_불린다():
+    """함수만 정의하고 `main`에 안 붙이면 테스트는 통과하는데 리포트에는 안 나온다.
+
+    실제로 그랬다 — 섹션을 만들어 놓고 호출을 안 붙였고, 이 파일의 단위
+    테스트가 함수를 직접 부르고 있어서 전부 초록이었다. 배선까지 본다.
+    """
+    import inspect
+
+    src = inspect.getsource(rd.main)
+    assert "segment_axis_audit(" in src, "축 점검이 리포트에 배선되지 않았다"

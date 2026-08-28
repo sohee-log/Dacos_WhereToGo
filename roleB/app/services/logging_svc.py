@@ -46,7 +46,9 @@ USER_EXISTS_SQL = "SELECT 1 FROM user_profile WHERE user_id = %(user_id)s"
 UPDATE_FEEDBACK_SQL = """
 UPDATE recommendation_log
 SET clicked  = CASE
-        WHEN %(clicked)s IS NULL THEN clicked
+        -- 캐스트가 없으면 Postgres가 $1의 타입을 못 정한다(AmbiguousParameter).
+        -- 가짜 executor로는 안 잡히고 실 DB에서만 터진다.
+        WHEN %(clicked)s::TEXT[] IS NULL THEN clicked
         ELSE ARRAY(
             SELECT t.x
             FROM unnest(COALESCE(clicked, '{}'::TEXT[]) || %(clicked)s::TEXT[])
