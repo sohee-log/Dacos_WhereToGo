@@ -1,3 +1,19 @@
+# segment_affinity 미지원 category_l2
+#
+# 서울시 2025 추정매출 서비스업종과 의미가 명확히 대응되지 않는
+# 아래 업종은 임의 매핑하지 않는다.
+#
+# - 장식품 소매
+# - 동남아시아
+# - 구내식당·뷔페
+# - 도서관·사적지
+# - 관광지
+# - 문화시설
+# - 기타 외국
+#
+# 해당 POI는 추천 엔진에서 segment_affinity를
+# 관측 불가(중립)로 처리한다.
+
 import argparse
 
 from sentence_transformers import SentenceTransformer
