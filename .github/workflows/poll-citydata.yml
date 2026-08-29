@@ -14,7 +14,7 @@ jobs:
   poll-citydata:
     runs-on: ubuntu-latest
 
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -30,9 +30,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests python-dotenv "psycopg[binary]"
 
-      - name: Poll Seoul citydata
+      - name: Poll Seoul citydata (5분 간격 3회)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
         run: |
-          python -m roleA.jobs.poll_citydata
+          for i in 1 2 3; do
+            echo "--- pass $i ---"
+            python -m roleA.jobs.poll_citydata || echo "pass $i 실패 — 계속한다"
+            if [ "$i" -lt 3 ]; then
+              sleep 300
+            fi
+          done
