@@ -16,6 +16,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 
 OUTPUT_PATH = ROOT_DIR / "roleA" / "data" / "review_candidates_raw.jsonl"
 
+REFRESH_OUTPUT_PATH = ROOT_DIR / "roleA" / "data" / "review_candidates_w4.jsonl"
+
 BASE_URL = "https://naverapihub.apigw.ntruss.com/" "search/v1/blog"
 
 QUERY_TEMPLATES = [
@@ -25,7 +27,8 @@ QUERY_TEMPLATES = [
     '"{name}" 웨이팅',
 ]
 
-MAX_RESULTS_PER_POI = 10
+MAX_RESULTS_PER_POI = 15
+SEARCH_DISPLAY = 50
 
 
 load_dotenv()
@@ -245,7 +248,7 @@ def search_blog(query):
 
     params = {
         "query": query,
-        "display": 20,
+        "display": SEARCH_DISPLAY,
         "start": 1,
         "sort": "sim",
         "format": "json",
@@ -279,19 +282,18 @@ def search_blog(query):
             time.sleep(wait_seconds)
 
 
-def load_completed_ids():
+def load_completed_ids(output_path):
     """
-    이미 수집 완료한 POI ID를 읽어서
-    중간에 끊겨도 이어서 실행할 수 있게 한다.
+    지정한 JSONL에서 이미 수집 완료한 POI ID를 읽는다.
     """
 
-    if not OUTPUT_PATH.exists():
+    if not output_path.exists():
         return set()
 
     completed = set()
 
     with open(
-        OUTPUT_PATH,
+        output_path,
         "r",
         encoding="utf-8",
     ) as f:
@@ -305,7 +307,6 @@ def load_completed_ids():
 
             try:
                 row = json.loads(line)
-
                 completed.add(str(row["poi_id"]))
 
             except (
@@ -523,6 +524,12 @@ def main():
     )
 
     parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="이미 수집한 POI도 다시 검색",
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
     )
@@ -562,7 +569,9 @@ def main():
             len(pois),
         )
 
-        completed_ids = load_completed_ids()
+        output_path = REFRESH_OUTPUT_PATH if args.refresh else OUTPUT_PATH
+
+        completed_ids = load_completed_ids(output_path)
 
         print(
             "이미 수집 완료:",
@@ -636,13 +645,13 @@ def main():
                 # 로컬 raw 후보 저장
                 # ==================================
 
-                OUTPUT_PATH.parent.mkdir(
+                output_path.parent.mkdir(
                     parents=True,
                     exist_ok=True,
                 )
 
                 with open(
-                    OUTPUT_PATH,
+                    output_path,
                     "a",
                     encoding="utf-8",
                 ) as f:
