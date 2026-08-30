@@ -9,9 +9,9 @@ import KakaoMap from '@/components/KakaoMap';
 import RequestForm from '@/components/RequestForm';
 import ScoreDebug from '@/components/ScoreDebug';
 import { Purpose, RecommendRequest, RecommendResponse } from '@/lib/types';
+import { PURPOSES } from '@/lib/constants';
 import { postRecommend, ApiError } from '@/lib/api';
 import { loadUserId } from '@/lib/session';
-
 
 const DEFAULT_LOCATION = { lat: 37.5340, lng: 126.9946 }; // 이태원 인근 폴백
 
@@ -21,8 +21,20 @@ function defaultVisitAt(): string {
   return d.toISOString();
 }
 
+// 온보딩에서 넘어온 mood(분위기+목적 태그, 쉼표 구분)에서 실제 Purpose 값을 골라낸다.
+// ⚠️ 예전엔 이 값을 아예 안 읽고 무조건 '데이트'로 고정했었다 — 그래서 온보딩에서
+// 뭘 고르든 첫 추천은 항상 "데이트용 2인" 조건으로 나갔다. purpose_tags는 온보딩에서
+// 다중 선택이 가능하므로, 그중 PURPOSES에 실제로 속하는 첫 값을 초기 occasion으로 쓴다.
+function pickInitialPurpose(mood: string | null): Purpose {
+  if (!mood) return '데이트';
+  const tags = mood.split(',');
+  const matched = tags.find((t): t is Purpose => (PURPOSES as readonly string[]).includes(t));
+  return matched ?? '데이트';
+}
+
 function RecommendContent() {
   const searchParams = useSearchParams();
+  // URL이 있으면 URL 우선, 없으면 로컬 저장값 (TODO_FOR_C §C-4)
   const userId = searchParams.get('user_id') ?? loadUserId();
   const debug = searchParams.get('debug') === '1'; // C4-4: ?debug=1 로만 노출
 
@@ -33,9 +45,20 @@ function RecommendContent() {
   const [errorKind, setErrorKind] = useState<'none' | 'retryable' | 'rate_limited' | 'fatal'>('none');
   const [retryAfterSec, setRetryAfterSec] = useState<number | null>(null);
 
-  // ── 요청 폼 상태 (지금까지는 하드코딩되어 RequestForm이 무용지물이었다) ──
-  const [purpose, setPurpose] = useState<Purpose>('데이트');
-  const [partySize, setPartySize] = useState<number>(2);
+  // ── 요청 폼 상태 ──
+  // purpose 초기값은 온보딩에서 고른 mood(=atmosphere+purpose 태그)에서 뽑는다.
+  // party_size/budget_band/visit_at/location은 "이번 방문"에 특화된 값이라
+  // 온보딩(프로필)이 아니라 여기(occasion)에서 매번 새로 받는 게 설계 의도다 —
+  // 다만 party_size는 첫 요청부터 기본값(2)으로 조용히 나가니, 인원이 다른
+  // 사람은 첫 결과가 부정확할 수 있다는 점은 감안할 것 (개선 여지 있음).
+  const [purpose, setPurpose] = useState<Purpose>(() =>
+    pickInitialPurpose(searchParams.get('mood'))
+  );
+  // /onboarding/party에서 넘어온 값이 있으면 그걸 쓰고, 없으면(직접 URL 진입 등) 2로 폴백
+  const [partySize, setPartySize] = useState<number>(() => {
+    const fromUrl = Number(searchParams.get('party_size'));
+    return Number.isFinite(fromUrl) && fromUrl > 0 ? fromUrl : 2;
+  });
   const [budgetBand, setBudgetBand] = useState<number>(2);
   const [visitAt, setVisitAt] = useState<string>(defaultVisitAt());
   const [location, setLocation] = useState(DEFAULT_LOCATION);
@@ -228,26 +251,6 @@ function RecommendContent() {
           </div>
         ) : (
           <>
-            {/* [C4-4] 전환 게이트 — ?debug=1 에서만.
-                둘 다 true면 후보가 부족해 기준을 완화한 것이다. A의 적재가
-                끝나기 전까지는 계속 true이고, 여기가 false로 바뀌는 순간이
-                MOCK_MODE=false 전환 시점이다 (roleB BRIEF §3). */}
-            {debug && (
-              <div className="p-3 rounded-xl bg-slate-900 text-[11px] font-mono border border-slate-800 space-y-1">
-                <p className={data.low_confidence ? 'text-amber-400' : 'text-emerald-400'}>
-                  low_confidence: {String(data.low_confidence)}
-                  {data.low_confidence && ' — 후보 부족으로 attr_confidence 기준을 완화했다'}
-                </p>
-                <p className={data.radius_expanded ? 'text-amber-400' : 'text-emerald-400'}>
-                  radius_expanded: {String(data.radius_expanded)}
-                  {data.radius_expanded && ' — 검색 반경을 넓혀 재시도했다'}
-                </p>
-                {data.context.weather_source && (
-                  <p className="text-slate-400">weather_source: {data.context.weather_source}</p>
-                )}
-              </div>
-            )}
-
             <div className="rounded-3xl overflow-hidden shadow-sm border border-slate-100">
               <KakaoMap places={data.results} />
             </div>
