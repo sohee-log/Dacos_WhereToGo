@@ -342,6 +342,14 @@ def build_live_recommendation(
         if item[1]["poi_id"] not in {c[1]["poi_id"] for c in chosen}:
             chosen.append(item)
 
+    # 화면 순서는 **점수 순**이다. LLM이 반환한 순서를 그대로 쓰면 1번 카드보다
+    # 4번 카드의 score가 높은 화면이 나온다 — `?debug=1`(C4-4)이면 그대로 보인다.
+    # LLM이 정하는 것은 "어디를 설명할지"이고, "무엇이 1등인지"는 점수가 정한다
+    # (R3: LLM은 근거 인용·설명 생성에만 쓴다). 목 경로(mock_data)는 처음부터
+    # 점수 순이었으므로 두 경로의 순서 규칙도 여기서 같아진다.
+    # 동점 처리는 위 `scored.sort`와 같은 키를 쓴다 — 같은 요청이면 같은 화면이다.
+    chosen.sort(key=lambda x: (-x[0], x[1]["poi_id"]))
+
     lo, hi = EXPLORATION_RANK_RANGE
     picked = {c[1]["poi_id"] for c in chosen}
     pool = [it for it in scored[lo - 1 : hi] if it[1]["poi_id"] not in picked]

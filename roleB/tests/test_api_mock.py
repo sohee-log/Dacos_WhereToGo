@@ -254,3 +254,31 @@ def test_health_응답이_계약_필드를_전부_갖는다(client):
     body = client.get("/health").json()
     assert set(body) >= {"status", "db", "db_reason", "mode", "version"}
     assert body["status"] == "ok"      # DB가 죽어도 200·ok다 (UptimeRobot 때문)
+
+
+# --- 결과 순서 (2026-08-30) ---------------------------------------------------
+#
+# live 경로가 LLM이 반환한 순서를 그대로 화면에 실었다. 그래서 배포본에서
+# 1번 카드 0.8603 · 4번 카드 0.8808 이 나왔다 — `?debug=1`이면 그대로 보인다.
+# 목 경로는 처음부터 점수 순이었다. 두 경로의 순서 규칙이 갈리면 목으로 만든
+# 화면이 실데이터에서 다르게 보이므로, 계약을 여기에 못박는다.
+
+
+def _sorted_desc(scores: list[float]) -> bool:
+    return all(a >= b for a, b in zip(scores, scores[1:]))
+
+
+def test_결과는_점수_내림차순이다(client, recommend_payload):
+    body = client.post("/api/recommend", json=recommend_payload).json()
+    # 탐색 슬롯은 점수와 무관하게 맨 뒤다 (ROLE_B §6.7). 그것만 빼고 본다.
+    ranked = [r["score"] for r in body["results"] if not r["is_exploration"]]
+    assert len(ranked) >= 3
+    assert _sorted_desc(ranked), f"점수 순이 아니다: {ranked}"
+
+
+def test_탐색_슬롯은_있다면_맨_뒤_한_건뿐이다(client, recommend_payload):
+    body = client.post("/api/recommend", json=recommend_payload).json()
+    flags = [r["is_exploration"] for r in body["results"]]
+    assert flags.count(True) <= 1
+    if True in flags:
+        assert flags[-1] is True

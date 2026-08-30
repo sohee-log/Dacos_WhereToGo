@@ -10,6 +10,8 @@ from __future__ import annotations
 import pytest
 
 from app.constants import (
+    AGE_BANDS,
+    BASELINE_AGE_RATE,
     NEUTRAL_TERM,
     W,
     ZONE_BARRIER,
@@ -259,6 +261,30 @@ def test_live_segment_match_rewards_over_representation():
     below = live_segment_match({"20": 5.0}, 20)
     above = live_segment_match({"20": 40.0}, 20)
     assert above > below
+
+
+def test_baseline_age_rate_는_실측값이고_재정규화하지_않는다():
+    """분모(BASELINE_AGE_RATE)와 분자(age_rates)는 **같은 기준**이어야 한다.
+
+    A가 hotspot_snapshot 2,122건을 인구 가중평균해 준 값이다
+    (roleA/reports/coverage.md §9). citydata는 0~9세·70대 이상도 주는데
+    엔진 계약이 10~60이라 합이 1이 아니다(≈0.933). 여기서 10~60 합으로
+    재정규화하면 분모만 커져 live_segment_match가 통째로 낮게 나온다 —
+    '보기 좋으라고' 합을 1로 맞추는 손질을 막는 테스트다.
+    """
+    assert set(BASELINE_AGE_RATE) == set(AGE_BANDS)
+    total = sum(BASELINE_AGE_RATE.values())
+    assert 0.90 < total < 0.96, f"합이 1에 가깝다 — 재정규화된 값이 아닌가: {total}"
+    # 20대가 가장 큰 밴드다. 잠정치(10대 0.10)와 달리 10대가 가장 작다.
+    assert max(BASELINE_AGE_RATE, key=BASELINE_AGE_RATE.get) == 20
+    assert min(BASELINE_AGE_RATE, key=BASELINE_AGE_RATE.get) == 10
+
+
+def test_live_segment_match_는_baseline과_같으면_중립이다():
+    """또래 비중이 딱 평균이면 0.5다. 평균의 2배에서 1.0으로 포화한다."""
+    for band, base in BASELINE_AGE_RATE.items():
+        assert live_segment_match({str(band): base}, band) == pytest.approx(0.5)
+        assert live_segment_match({str(band): base * 2}, band) == pytest.approx(1.0)
 
 
 def test_crowd_fit_flips_with_purpose():

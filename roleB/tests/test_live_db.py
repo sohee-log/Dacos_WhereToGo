@@ -650,3 +650,24 @@ def test_hotspot_outside_pois_are_not_wiped_out(settings, executor, req):
     res = build_live_recommendation(req, settings, executor)
     dumps = [r.score_breakdown.model_dump() for r in res.results]
     assert any("live_segment" not in d for d in dumps)
+
+
+def test_live_결과도_점수_내림차순이다(settings, executor, req):
+    """LLM이 고른 순서가 아니라 **점수 순**으로 나가야 한다 (2026-08-30).
+
+    live 경로만 이 규칙에서 빠져 있었다. `explain.generate`가 돌려준 순서를
+    그대로 화면에 실어서, 배포본에서 1번 카드 0.8603 · 4번 카드 0.8808 이
+    나왔다. 목 경로는 처음부터 점수 순이라 목으로는 재현되지 않는다 —
+    그래서 이 테스트가 여기(실 DB)에 있다.
+
+    LLM 응답에 의존하지 않는다. 캐시든 템플릿이든 순서 규칙은 같아야 한다.
+    """
+    res = build_live_recommendation(req, settings, executor)
+    ranked = [r.score for r in res.results if not r.is_exploration]
+    assert len(ranked) >= 1
+    assert all(a >= b for a, b in zip(ranked, ranked[1:])), f"점수 순이 아니다: {ranked}"
+
+    flags = [r.is_exploration for r in res.results]
+    assert flags.count(True) <= 1
+    if True in flags:
+        assert flags[-1] is True, "탐색 슬롯은 맨 뒤다 (ROLE_B §6.7)"
