@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     # --- DB (W2~) ------------------------------------------------------
     database_url: str | None = None
     db_pool_min: int = 1
-    db_pool_max: int = 5          # Supabase Free 커넥션 한도를 고려한 보수적 값
+    # 추천 한 건이 서로 의존하지 않는 조회 **넷을 동시에** 보낸다
+    # (pipeline.gather). 요청 하나가 커넥션을 4개까지 쓰므로 5로는 두 요청이
+    # 겹치는 순간 서로를 기다린다. Supabase Free의 pooler 한도 안에서 넉넉히 잡는다.
+    db_pool_max: int = 12
     db_pool_timeout: float = 10.0 # 풀 기본 대기 상한(초)
     # 요청 하나가 커넥션을 기다리는 상한. 짧아야 한다 —
     # DB가 죽었을 때 사용자를 10초 세워두고 500을 주느니 3초 만에 503이 낫다.
