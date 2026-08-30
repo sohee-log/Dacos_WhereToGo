@@ -39,6 +39,22 @@ except ImportError:  # pragma: no cover - 배포 환경에는 항상 설치된�
     CONNECTION_ERRORS = ()
 
 
+def _is_read_only(sql: str) -> bool:
+    """`SELECT`/`WITH`로 시작하는 단문만 읽기로 본다.
+
+    `UPDATE ... RETURNING`처럼 결과를 돌려주는 쓰기가 이 프로젝트에 있으므로
+    "결과를 읽는가"로는 구분할 수 없다. 문장의 첫 낱말로 판단한다.
+    애매하면 쓰기로 본다 — 재시도하지 않는 쪽이 안전한 실패다. `WITH`를 읽기로
+    치지 않는 것도 그래서다: `WITH x AS (...) INSERT ...` 가 문법적으로 가능하다.
+    """
+    head = sql.lstrip().lstrip("(").lstrip()
+    while head.startswith("--"):                    # 선행 주석 줄을 건너뛴다
+        _, _, head = head.partition("\n")
+        head = head.lstrip()
+    first = head.split(None, 1)[0].upper() if head.split() else ""
+    return first == "SELECT"
+
+
 class DatabaseUnavailable(RuntimeError):
     """DB를 써야 하는 경로인데 풀이 없거나 죽었다.
 
@@ -72,13 +88,28 @@ class Database:
                 min_size=self._settings.db_pool_min,
                 max_size=self._settings.db_pool_max,
                 timeout=self._settings.db_pool_timeout,
-                # 대여 직전 살아 있는 커넥션인지 확인한다. Supabase가 유휴 커넥션을
-                # 끊어도 첫 요청이 죽지 않는다.
-                check=ConnectionPool.check_connection,
+                # ⚠️ `check=ConnectionPool.check_connection`을 쓰지 않는다.
+                #
+                # 대여할 때마다 `SELECT 1`을 한 번 더 보내는 옵션인데, **왕복이
+                # 한 번 더 붙는다.** Render(싱가포르) → Supabase(서울) 왕복은
+                # 실측 88ms이고 추천 한 건이 DB를 10번 부르므로 이것만으로
+                # 880ms다. 실제로 배포본 추천 지연 2,954ms 중 3분의 1이었다.
+                #
+                # 막으려던 상황은 "Supabase가 끊은 유휴 커넥션을 집어오는 것"이다.
+                # 그건 `max_idle`로 막는 게 맞다 — 오래 논 커넥션을 애초에
+                # 대여하지 않는다. 정상 경로에 왕복을 붙이지 않으면서 같은 것을
+                # 막는다. 그래도 빠져나간 경우는 아래 `_run`이 **읽기에 한해**
+                # 한 번 재시도한다.
+                max_idle=self._settings.db_max_idle,
                 kwargs={
                     "row_factory": dict_row,
                     "connect_timeout": int(self._settings.db_pool_timeout),
                     "application_name": "wheretogo-api",
+                    # 왕복을 하나 더 줄인다. `with pool.connection()`은 블록을
+                    # 나갈 때 COMMIT을 보내는데, 이 클래스는 호출마다 **단문
+                    # 하나만** 실행하므로 묶을 트랜잭션이 없다. 단문은 그 자체로
+                    # 원자적이라 의미도 같다.
+                    "autocommit": True,
                     # 무료 티어에서 느린 쿼리 하나가 워커를 잡아먹지 않게 한다.
                     # 목표 응답은 300ms다 (ROLE_B W4 B4-1).
                     "options": f"-c statement_timeout={self._settings.db_statement_timeout_ms}",
@@ -146,13 +177,38 @@ class Database:
         if self._pool is None:
             raise DatabaseUnavailable(self._skip_reason() or "풀이 열려 있지 않다")
         try:
-            with self._pool.connection(
-                timeout=self._settings.db_acquire_timeout
-            ) as conn, conn.cursor() as cur:
-                cur.execute(sql, params)
-                return list(cur.fetchall()) if fetch else cur.rowcount
+            return self._once(sql, params, fetch=fetch)
         except CONNECTION_ERRORS as exc:
-            raise DatabaseUnavailable(f"DB에 닿지 못했다: {exc}") from exc
+            # 대여할 때마다 확인하지 않는 대신(위 `max_idle` 주석), 죽은 커넥션을
+            # 집어온 드문 경우를 여기서 한 번 만회한다. 풀은 이미 그 커넥션을
+            # 버렸으므로 두 번째 시도는 새 커넥션으로 나간다.
+            #
+            # **읽기만 재시도한다.** 쓰기는 "서버에 닿기 전에 끊긴 것"과 "실행은
+            # 됐는데 응답이 유실된 것"을 구분할 수 없다. 후자를 재시도하면
+            # recommendation_log가 한 요청에 두 줄 남고, 그건 조용히 틀린 데이터가
+            # 된다 — 사용자에게 503을 주는 편이 낫다.
+            if not _is_read_only(sql):
+                raise DatabaseUnavailable(f"DB에 닿지 못했다: {exc}") from exc
+            log.info("커넥션이 끊겨 읽기를 한 번 재시도한다: %s", exc)
+            try:
+                return self._once(sql, params, fetch=fetch)
+            except CONNECTION_ERRORS as retry_exc:
+                raise DatabaseUnavailable(
+                    f"DB에 닿지 못했다: {retry_exc}"
+                ) from retry_exc
+
+    def _once(
+        self,
+        sql: str,
+        params: Mapping[str, Any] | Sequence[Any] | None,
+        *,
+        fetch: bool,
+    ) -> Any:
+        with self._pool.connection(
+            timeout=self._settings.db_acquire_timeout
+        ) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall()) if fetch else cur.rowcount
 
     def fetch_all(
         self, sql: str, params: Mapping[str, Any] | Sequence[Any] | None = None
