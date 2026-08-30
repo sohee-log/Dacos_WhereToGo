@@ -22,6 +22,8 @@ import hashlib
 import logging
 import random
 import time
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -61,6 +63,31 @@ RAIN_LABEL_THRESHOLD = 0.3
 
 class LiveDataUnavailable(RuntimeError):
     """DB는 살아 있는데 추천할 POI가 없다. 대부분 A의 적재가 아직 안 된 상태다."""
+
+
+def gather(*calls: Callable[[], Any]) -> list[Any]:
+    """서로 의존하지 않는 조회를 **한 번에** 보낸다.
+
+    왜 필요한가 — 이 파이프라인의 지연은 쿼리 실행이 아니라 **왕복 횟수**다.
+    Render(싱가포르) → Supabase(서울) 왕복이 실측 88ms라, 순서대로 보내면
+    한 번 부를 때마다 88ms가 그냥 붙는다. 서로 결과를 기다릴 이유가 없는
+    조회는 동시에 보내면 그 묶음이 왕복 한 번 값이 된다.
+
+    안전한 이유
+      - `executor`(=`Database.fetch_all`)는 호출마다 풀에서 커넥션을 빌린다.
+        psycopg_pool은 동시 대여를 전제로 만들어진 물건이다.
+      - 각 호출은 자기 결과만 만들어 돌려준다. 공유 상태를 건드리지 않는다.
+      - 예외는 `result()`에서 그대로 올라온다. `DatabaseUnavailable`이 삼켜져
+        503이 200으로 바뀌는 일은 없다.
+
+    ⚠️ 묶는 개수만큼 커넥션을 동시에 쓴다. `db_pool_max`가 그보다 넉넉해야
+       한다 (config.py 참조). 순서가 결과에 영향을 주는 조회를 여기 넣지 않는다.
+    """
+    if len(calls) == 1:
+        return [calls[0]()]
+    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+        futures = [pool.submit(fn) for fn in calls]
+        return [f.result() for f in futures]
 
 
 @dataclass
@@ -156,10 +183,22 @@ def resolve_context(
     lat: float,
     lng: float,
     visit_at: datetime,
+    *,
+    prefetched: tuple[Any, list[dict[str, Any]]] | None = None,
 ) -> ResolvedContext:
-    """`/api/recommend`와 `/api/context/now`가 함께 쓴다."""
-    near_row = retrieval.fetch_nearest_hotspot(executor, lat, lng)
-    snapshots = retrieval.fetch_hotspot_latest(executor)
+    """`/api/recommend`와 `/api/context/now`가 함께 쓴다.
+
+    `prefetched`는 (최근접 지점, 스냅샷 목록)이다. 추천 경로는 이 둘을 사용자
+    프로필·생활권과 **같은 묶음**으로 미리 가져오므로(왕복 절약), 여기서 다시
+    조회하지 않도록 넘겨받는다. `/api/context/now`는 넘기지 않고 직접 조회한다.
+    """
+    if prefetched is not None:
+        near_row, snapshots = prefetched
+    else:
+        near_row, snapshots = gather(
+            lambda: retrieval.fetch_nearest_hotspot(executor, lat, lng),
+            lambda: retrieval.fetch_hotspot_latest(executor),
+        )
     signals = live_signals.build_signal_map(snapshots, visit_at)
 
     near_code = near_row["code"] if near_row else None
@@ -210,6 +249,60 @@ def _fallback_log_id(req: RecommendRequest) -> int:
     return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % 900_000 + 100_000
 
 
+def select_shown(
+    scored: list[tuple[float, dict[str, Any], dict[str, float], float]],
+    explanations: Sequence[explain.Explanation],
+) -> tuple[
+    list[tuple[float, dict[str, Any], dict[str, float], float]],
+    dict[str, str],
+    dict[str, list[dict[str, str]]],
+]:
+    """노출할 3~4곳을 고르고 **점수 순으로 세운다.** (탐색 슬롯은 호출부가 붙인다)
+
+    고르는 것과 세우는 것을 나눈다.
+      - **무엇을 보여줄지**는 LLM이 고른 곳 우선이다. LLM은 인용 후보가 있는
+        곳만 고르도록 프롬프트가 걸려 있어, 근거가 붙는 곳이 우선 노출된다.
+      - **무엇이 1등인지**는 점수가 정한다 (R3 — LLM은 근거 인용·설명 생성에만
+        쓴다). 예전엔 `explanations`의 순서를 그대로 화면에 실어서, 배포본에서
+        1번 카드 0.8603 · 4번 카드 0.8808이 나왔다. `?debug=1`(C4-4)이면 그대로
+        보인다.
+
+    **이 함수가 따로 있는 이유**가 그 버그다. `explanations`가 비면(LLM 키가
+    없거나 쿼터가 끝나면) 아래 폴백이 점수 순으로 채우므로 순서가 저절로 맞는다.
+    로컬·CI에는 LLM 키가 없어서 **테스트가 늘 폴백 경로만 밟았고, 정작 깨진
+    경로는 한 번도 실행되지 않았다.** 순수 함수로 떼어 두면 LLM 없이도 그
+    경로를 직접 태울 수 있다 (tests/test_select_shown.py).
+
+    동점 처리는 `scored.sort`와 같은 키(-score, poi_id)를 쓴다 — 같은 요청이면
+    같은 화면이다.
+    """
+    by_id = {item[1]["poi_id"]: item for item in scored}
+    chosen: list[tuple[float, dict[str, Any], dict[str, float], float]] = []
+    reasons: dict[str, str] = {}
+    quotes: dict[str, list[dict[str, str]]] = {}
+    seen: set[str] = set()
+
+    for exp in explanations[: RESULT_MAX - 1]:
+        item = by_id.get(exp.poi_id)
+        if item is None or exp.poi_id in seen:
+            continue
+        seen.add(exp.poi_id)
+        chosen.append(item)
+        reasons[exp.poi_id] = exp.reason
+        quotes[exp.poi_id] = exp.evidence
+
+    # LLM이 적게 골랐거나 폴백이면 점수 순으로 채운다. 빈 화면을 만들지 않는다.
+    for item in scored:
+        if len(chosen) >= RESULT_MAX - 1:
+            break
+        if item[1]["poi_id"] not in seen:
+            seen.add(item[1]["poi_id"])
+            chosen.append(item)
+
+    chosen.sort(key=lambda x: (-x[0], x[1]["poi_id"]))
+    return chosen, reasons, quotes
+
+
 def build_live_recommendation(
     req: RecommendRequest, settings: Settings, executor: retrieval.Executor
 ) -> RecommendResponse:
@@ -217,7 +310,19 @@ def build_live_recommendation(
     visit_dt = parse_visit_at(req.visit_at)
     lat, lng = req.location.lat, req.location.lng
 
-    resolved = resolve_context(executor, settings, lat, lng, visit_dt)
+    # --- ⓪ 서로 의존하지 않는 조회 넷을 한 묶음으로 --------------------------
+    # 지연의 정체는 왕복 횟수다(BRIEF_2026-08-30 §1②). 이 넷은 요청 값만 있으면
+    # 되고 서로를 기다릴 이유가 없다. 순서대로 보내면 왕복 4회, 묶으면 1회다.
+    near_row, snapshots, profile, user_zone = gather(
+        lambda: retrieval.fetch_nearest_hotspot(executor, lat, lng),
+        lambda: retrieval.fetch_hotspot_latest(executor),
+        lambda: retrieval.fetch_user_profile(executor, req.user_id),
+        lambda: retrieval.fetch_user_zone(executor, lat, lng),
+    )
+
+    resolved = resolve_context(
+        executor, settings, lat, lng, visit_dt, prefetched=(near_row, snapshots)
+    )
     wx = resolved.wx
 
     # --- ① 후보 생성 -------------------------------------------------------
@@ -238,16 +343,21 @@ def build_live_recommendation(
         raise LiveDataUnavailable("poi 테이블에 후보가 없다 (A의 적재 대기)")
 
     # --- 사용자 · 세그먼트 --------------------------------------------------
-    profile = retrieval.fetch_user_profile(executor, req.user_id) or {}
+    # 프로필·생활권은 ⓪에서 이미 가져왔다.
+    profile = profile or {}
     gender = profile.get("gender")
     age_band = profile.get("age_band")
     # 온보딩 5번 문항. 없으면 중간값이며, 그러면 개인화 항 하나가 중립이 된다 (B3-4)
     sensitivity = profile.get("weather_sensitivity") or DEFAULT_WEATHER_SENSITIVITY
-    user_zone = retrieval.fetch_user_zone(executor, lat, lng)
 
-    segment_map: dict[tuple[str, str], float] = {}
-    if gender and age_band:
-        segment_map = retrieval.fetch_segment_affinity(
+    weather_state = rag.weather_state_of(wx)
+
+    # 세그먼트 통계와 쿼리 벡터도 서로를 기다릴 이유가 없다. 둘 다 이 시점에
+    # 필요한 입력(후보 · 날씨)이 갖춰져 있다 — 한 묶음으로 보낸다.
+    def _segment() -> dict[tuple[str, str], float]:
+        if not (gender and age_band):
+            return {}
+        return retrieval.fetch_segment_affinity(
             executor,
             found.candidates,
             gender=gender,
@@ -255,6 +365,13 @@ def build_live_recommendation(
             dow_type=dow_type(visit_dt.weekday()),
             hour_band=hour_band(visit_dt.hour),
         )
+
+    segment_map, qvec = gather(
+        _segment,
+        lambda: rag.fetch_query_vector(
+            executor, req.purpose.value, weather_state, req.party_size
+        ),
+    )
 
     # affinity는 "품질"이 아니라 "비중"이라 절대값으로 중립값과 비교할 수 없다.
     # 이번 후보들의 중앙값을 기준점으로 넘긴다 (scoring.segment_affinity_term).
@@ -295,8 +412,7 @@ def build_live_recommendation(
 
     # --- ③ RAG — 상위 20개에만 (ROLE_B §6.8) ----------------------------------
     top20_ids = [poi["poi_id"] for _, poi, _, _ in scored]
-    weather_state = rag.weather_state_of(wx)
-    qvec = rag.fetch_query_vector(executor, req.purpose.value, weather_state, req.party_size)
+    # `weather_state` · `qvec`는 위에서 세그먼트 조회와 함께 미리 받아 뒀다.
     evidence = rag.fetch_evidence(executor, top20_ids, qvec)
 
     key = explain.cache_key(
@@ -322,33 +438,7 @@ def build_live_recommendation(
     )
 
     # --- 최종 3~5 + 탐색 슬롯 1 (ROLE_B §6.7) ---------------------------------
-    by_id = {poi["poi_id"]: item for item in scored for poi in (item[1],)}
-    chosen: list[tuple] = []
-    reasons: dict[str, str] = {}
-    quotes: dict[str, list[dict[str, str]]] = {}
-
-    for exp in explanations[: RESULT_MAX - 1]:
-        item = by_id.get(exp.poi_id)
-        if item is None:
-            continue
-        chosen.append(item)
-        reasons[exp.poi_id] = exp.reason
-        quotes[exp.poi_id] = exp.evidence
-
-    # LLM이 적게 골랐거나 폴백이면 점수 순으로 채운다. 빈 화면을 만들지 않는다.
-    for item in scored:
-        if len(chosen) >= RESULT_MAX - 1:
-            break
-        if item[1]["poi_id"] not in {c[1]["poi_id"] for c in chosen}:
-            chosen.append(item)
-
-    # 화면 순서는 **점수 순**이다. LLM이 반환한 순서를 그대로 쓰면 1번 카드보다
-    # 4번 카드의 score가 높은 화면이 나온다 — `?debug=1`(C4-4)이면 그대로 보인다.
-    # LLM이 정하는 것은 "어디를 설명할지"이고, "무엇이 1등인지"는 점수가 정한다
-    # (R3: LLM은 근거 인용·설명 생성에만 쓴다). 목 경로(mock_data)는 처음부터
-    # 점수 순이었으므로 두 경로의 순서 규칙도 여기서 같아진다.
-    # 동점 처리는 위 `scored.sort`와 같은 키를 쓴다 — 같은 요청이면 같은 화면이다.
-    chosen.sort(key=lambda x: (-x[0], x[1]["poi_id"]))
+    chosen, reasons, quotes = select_shown(scored, explanations)
 
     lo, hi = EXPLORATION_RANK_RANGE
     picked = {c[1]["poi_id"] for c in chosen}
