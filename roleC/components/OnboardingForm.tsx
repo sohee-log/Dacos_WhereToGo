@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Purpose, Atmosphere, OnboardingRequest, OnboardingResponse } from '@/lib/types';
-import { PURPOSES, ATMOSPHERES, AGE_BANDS } from '@/lib/constants';
+import { PURPOSES, ATMOSPHERES } from '@/lib/constants';
 import { submitOnboarding, ApiError } from '@/lib/api';
 import { saveUserId } from '@/lib/session';
 
@@ -17,10 +17,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
 
   // 1. 온보딩 상태 관리 (5문항 이하 제약 준수)
   const [gender, setGender] = useState<'M' | 'F'>('M');
-  // 타입을 number로 두면 서버가 받지 않는 값(25, 45 …)을 보내도 컴파일이 통과한다.
-  // 계약 타입에서 직접 끌어와 10/20/…/60만 들어가게 한다.
-  type AgeBand = OnboardingRequest['age_band'];
-  const [ageBand, setAgeBand] = useState<AgeBand>(20);
+  const [ageBand, setAgeBand] = useState<number>(20);
   const [selectedAtmospheres, setSelectedAtmospheres] = useState<Atmosphere[]>([]);
   const [selectedPurposes, setSelectedPurposes] = useState<Purpose[]>([]);
   const [budgetBand, setBudgetBand] = useState<number>(2);
@@ -58,7 +55,10 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
 
     try {
       const data: OnboardingResponse = await submitOnboarding(payload);
-      
+
+      // 새로고침·직접진입에서도 유지되도록 로컬에 저장 (TODO_FOR_C §C-4)
+      saveUserId(data.user_id);
+
       // 💡 [핵심] 유저가 선택한 분위기 태그(#)와 목적 단어들을 하나의 한글 단어 배열로 깔끔하게 정리합니다.
       const collectedMoods = [
         ...selectedAtmospheres,
@@ -71,8 +71,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
       } else {
         // 백업용 다이렉트 이동 시에도 주소창 뒤에 무드 리스트를 강제로 태웁니다.
         const moodQuery = collectedMoods.join(',');
-        saveUserId(data.user_id); // 로컬스토리지에 user_id 저장
-        window.location.href = `/recommend?user_id=${data.user_id}&mood=${encodeURIComponent(moodQuery)}`;
+        window.location.href = `/onboarding/party?user_id=${data.user_id}&mood=${encodeURIComponent(moodQuery)}`;
       }
     } catch (err: unknown) {
       console.error(err);
@@ -120,18 +119,15 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
               여성
             </button>
           </div>
-          {/* 50대·60대가 빠져 있었다. 엔진과 segment_affinity는 60까지 받는데
-              화면이 40에서 끊기면 그 사용자들이 40대로 집계된다. */}
           <select
             value={ageBand}
-            onChange={(e) => setAgeBand(Number(e.target.value) as AgeBand)}
+            onChange={(e) => setAgeBand(Number(e.target.value))}
             className="text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100 font-semibold text-slate-700 focus:outline-none"
           >
-            {AGE_BANDS.map((band) => (
-              <option key={band} value={band}>
-                {band === 60 ? '60대 이상' : `${band}대`}
-              </option>
-            ))}
+            <option value={10}>10대</option>
+            <option value={20}>20대</option>
+            <option value={30}>30대</option>
+            <option value={40}>40대 이상</option>
           </select>
         </div>
       </div>
