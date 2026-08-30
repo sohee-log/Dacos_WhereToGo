@@ -3,7 +3,9 @@
 
 import { useState } from 'react';
 import { Purpose, Atmosphere, OnboardingRequest, OnboardingResponse } from '@/lib/types';
-import { PURPOSES, ATMOSPHERES } from '@/lib/constants';
+import { PURPOSES, ATMOSPHERES, AGE_BANDS } from '@/lib/constants';
+
+type AgeBand = typeof AGE_BANDS[number];
 import { submitOnboarding, ApiError } from '@/lib/api';
 import { saveUserId } from '@/lib/session';
 
@@ -17,7 +19,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
 
   // 1. 온보딩 상태 관리 (5문항 이하 제약 준수)
   const [gender, setGender] = useState<'M' | 'F'>('M');
-  const [ageBand, setAgeBand] = useState<number>(20);
+  const [ageBand, setAgeBand] = useState<AgeBand>(20);
   const [selectedAtmospheres, setSelectedAtmospheres] = useState<Atmosphere[]>([]);
   const [selectedPurposes, setSelectedPurposes] = useState<Purpose[]>([]);
   const [budgetBand, setBudgetBand] = useState<number>(2);
@@ -121,13 +123,14 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
           </div>
           <select
             value={ageBand}
-            onChange={(e) => setAgeBand(Number(e.target.value))}
+            onChange={(e) => setAgeBand(Number(e.target.value) as AgeBand)}
             className="text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100 font-semibold text-slate-700 focus:outline-none"
           >
-            <option value={10}>10대</option>
-            <option value={20}>20대</option>
-            <option value={30}>30대</option>
-            <option value={40}>40대 이상</option>
+            {AGE_BANDS.map((band) => (
+              <option key={band} value={band}>
+                {band}대{band === 60 ? ' 이상' : ''}
+              </option>
+            ))}
           </select>
         </div>
       </div>
