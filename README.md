@@ -167,7 +167,7 @@ Next.js  ─────▶  FastAPI  ─────▶  PostgreSQL
 
 | | |
 |---|---|
-| 웹 (Vercel) | https://dacos-wheretogo-web.vercel.app |
+| 웹 (Vercel) | https://dacoswheretogo.vercel.app |
 | API (Render) | https://dacos-wheretogo.onrender.com |
 | 헬스체크 | https://dacos-wheretogo.onrender.com/health |
 
