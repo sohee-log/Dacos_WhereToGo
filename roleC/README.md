@@ -7,7 +7,7 @@
 
 | | |
 |---|---|
-| 웹 (Vercel) | https://dacos-wheretogo-web.vercel.app |
+| 웹 (Vercel) | https://dacoswheretogo.vercel.app |
 | API (Render) | https://dacos-wheretogo.onrender.com · [`/health`](https://dacos-wheretogo.onrender.com/health) |
 
 ## 구조
