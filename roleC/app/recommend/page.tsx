@@ -63,11 +63,25 @@ function RecommendContent() {
   const [visitAt, setVisitAt] = useState<string>(defaultVisitAt());
   const [location, setLocation] = useState(DEFAULT_LOCATION);
 
-  // 사용자 위치. 실패하면 조용히 폴백 좌표를 쓴다 (권한 거부가 흔함).
+  // 용산구 대략 경계 (평가 시나리오 좌표 범위 기준: 이태원~청파~이촌~후암).
+  // 서비스가 용산구 전용이라, 이 밖의 좌표는 실제 GPS라도 신뢰하지 않는다.
+  const isWithinYongsan = (lat: number, lng: number) =>
+    lat >= 37.51 && lat <= 37.56 && lng >= 126.95 && lng <= 127.02;
+
+  // 사용자 위치. 실패하거나 용산구 밖이면 조용히 폴백 좌표(이태원)를 유지한다.
+  // ⚠️ 예전엔 용산구 밖 실제 GPS도 그대로 믿었다 — 그러면 "재검색"을 누르는
+  // 시점(GPS 응답이 그 사이 도착)에 갑자기 전혀 다른 지역 좌표로 요청이
+  // 나가서, 용산구 밖에서 테스트할 때 결과가 뜬금없이 이상해졌다.
   useEffect(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (isWithinYongsan(latitude, longitude)) {
+          setLocation({ lat: latitude, lng: longitude });
+        }
+        // 용산구 밖이면 그냥 무시 — DEFAULT_LOCATION 유지
+      },
       () => {
         /* 폴백 좌표 유지 */
       },
