@@ -526,15 +526,15 @@ def test_taste_similarity_comes_from_the_database(settings, db, executor, req):
         db.fetch_all, user_id=uid, gender="F", age_band=20,
         taste_tags=["조용한", "감성적인"], weather_sensitivity=2,
     )
-    rows = executor(
-        retrieval.CANDIDATE_SQL,
-        {
-            "lat": ITAEWON[0], "lng": ITAEWON[1], "radius_m": 3000,
-            "visit_at": datetime.now(KST), "party_size": 2, "budget_band": 4,
-            "rain_prob": 0.0, "pm25_grade": 1, "conf_min": 0.0,
-            "limit": 50, "user_id": uid,
-        },
+    # ⚠️ 파라미터를 손으로 적지 않는다. 예전엔 dict를 여기 직접 썼는데,
+    #    CANDIDATE_SQL에 `outdoor_unknown`이 하나 늘면서 이 테스트가
+    #    `query parameter missing`으로 죽었다 — SQL이 바뀐 것을 잡은 게 아니라
+    #    테스트가 따라가지 못한 것이다. `_params`가 SQL과 같은 곳에서 나온다.
+    q = retrieval.RetrievalQuery(
+        lat=ITAEWON[0], lng=ITAEWON[1], visit_at=datetime.now(KST),
+        party_size=2, budget_band=4, limit=50, user_id=uid, conf_min=0.0,
     )
+    rows = executor(retrieval.CANDIDATE_SQL, retrieval._params(q, 3000.0, 0.0))
     sims = [r["taste_sim"] for r in rows if r["taste_sim"] is not None]
     assert sims, "taste_sim이 전부 NULL이다 — tag_vector 또는 taste_vector가 비었다"
     assert all(-1.01 <= s <= 1.01 for s in sims)
@@ -601,6 +601,13 @@ def test_recommendation_quotes_come_from_review_chunk(settings, db, executor, re
 
     실제로 상위에 오를 POI에 후기를 직접 심는다. 시드의 리뷰 분포에 기대면
     (특히 `--scale`로 복제된 POI가 많을 때) 이 테스트가 조용히 skip된다.
+
+    ⚠️ **심은 문장이 인용되는지는 보지 않는다.** 예전엔 그걸 단언했는데, 그건
+    "이 POI에 후기가 거의 없다"는 시드 DB의 전제 위에서만 참이다. 실 Supabase에는
+    같은 POI에 진짜 후기 2,200청크가 있어 심은 문장이 밀리고, 그러면 **인용이
+    정상 동작하는데도 테스트가 빨간불**이 된다. 심는 이유는 인용이 0건이라
+    아래 루프가 공허하게 통과하는 것을 막기 위해서지, 순위를 보려는 게 아니다.
+    지켜야 할 계약은 하나다 — **나간 인용은 전부 원문에 있다.**
     """
     from app.services.pipeline import build_live_recommendation
 
@@ -615,7 +622,6 @@ def test_recommendation_quotes_come_from_review_chunk(settings, db, executor, re
         res = build_live_recommendation(req, settings, executor)
         quoted = [(r.poi_id, e.text) for r in res.results for e in r.evidence]
         assert quoted, "리뷰를 심었는데 인용이 하나도 붙지 않았다"
-        assert (target, marker) in quoted
 
         for poi_id, text in quoted:
             found = executor(
@@ -650,3 +656,59 @@ def test_hotspot_outside_pois_are_not_wiped_out(settings, executor, req):
     res = build_live_recommendation(req, settings, executor)
     dumps = [r.score_breakdown.model_dump() for r in res.results]
     assert any("live_segment" not in d for d in dumps)
+
+
+def test_live_결과도_점수_내림차순이다(settings, executor, req):
+    """LLM이 고른 순서가 아니라 **점수 순**으로 나가야 한다 (2026-08-30).
+
+    live 경로만 이 규칙에서 빠져 있었다. `explain.generate`가 돌려준 순서를
+    그대로 화면에 실어서, 배포본에서 1번 카드 0.8603 · 4번 카드 0.8808 이
+    나왔다. 목 경로는 처음부터 점수 순이라 목으로는 재현되지 않는다 —
+    그래서 이 테스트가 여기(실 DB)에 있다.
+
+    LLM 응답에 의존하지 않는다. 캐시든 템플릿이든 순서 규칙은 같아야 한다.
+    """
+    res = build_live_recommendation(req, settings, executor)
+    ranked = [r.score for r in res.results if not r.is_exploration]
+    assert len(ranked) >= 1
+    assert all(a >= b for a, b in zip(ranked, ranked[1:])), f"점수 순이 아니다: {ranked}"
+
+    flags = [r.is_exploration for r in res.results]
+    assert flags.count(True) <= 1
+    if True in flags:
+        assert flags[-1] is True, "탐색 슬롯은 맨 뒤다 (ROLE_B §6.7)"
+
+
+def test_추천은_왕복_예산_안에서_끝난다(settings, db, req):
+    """DB **호출 횟수**가 이 파이프라인의 지연을 정한다 (BRIEF_2026-08-30 §1②).
+
+    Render(싱가포르) → Supabase(서울) 왕복이 실측 88ms다. 호출이 하나 늘면
+    p50이 88ms 늘어난다 — 쿼리를 아무리 튜닝해도 되돌릴 수 없는 종류의 비용이다.
+    그래서 호출 수 자체를 계약으로 못박는다.
+
+    지금 구조 (묶음은 동시에 나가므로 왕복 1회로 친다)
+        ⓪ 최근접지점 · 스냅샷 · 프로필 · 생활권   (4 호출 · 왕복 1)
+        ① 후보 생성                              (1)
+        ② 세그먼트 · 쿼리벡터                     (2 호출 · 왕복 1)
+        ③ 인용                                    (1)
+        ④ 설명 캐시 조회                          (1)
+        ⑤ 로그 기록                               (1)
+                                        합계 10 호출 · 왕복 6회
+
+    호출 수가 늘면 여기서 먼저 깨진다. 늘려야 할 이유가 있으면 이 숫자를 같이
+    올리되, **묶을 수 있는지 먼저 본다** (`pipeline.gather`).
+    """
+    from app.services.pipeline import build_live_recommendation
+
+    calls: list[str] = []
+
+    def counting(sql, params=None):
+        calls.append(" ".join(sql.split())[:40])
+        return db.fetch_all(sql, params)
+
+    build_live_recommendation(req, settings, counting)
+
+    assert len(calls) <= 11, (
+        f"DB 호출이 {len(calls)}회다 (예산 10~11). Render에서 호출 하나가 88ms다:\n  "
+        + "\n  ".join(calls)
+    )

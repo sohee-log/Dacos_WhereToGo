@@ -188,6 +188,7 @@ quality_score는 attr_confidence >= 0.3인 T1 POI만 계산했다.
 - 모델: **BAAI/bge-m3, 1024차원**
 
 인원 밴드:
+
 - 1 = 1~2명
 - 2 = 3~4명
 - 3 = 5명 이상
@@ -196,20 +197,33 @@ quality_score는 attr_confidence >= 0.3인 T1 POI만 계산했다.
 
 ## 8. Citydata 실시간 데이터
 
-GitHub Actions의 `*/15` cron이 실제로 일정하게 실행되지 않는 문제를 보완하기 위해, 한 workflow 실행 안에서 5분 간격으로 3회 수집하도록 변경했다.
+GitHub Actions의 정기 실행 지연 문제를 보완하기 위해, 한 workflow 실행 안에서 5분 간격으로 3회 수집하도록 구성했다.
+
+또한 GitHub Actions scheduled workflow가 정각/15분 단위에서 불규칙하게 실행되는 현상이 확인되어 cron을 다음과 같이 변경했다.
+
+```yaml
+cron: "7,22,37,52 * * * *"
+```
+
+한 workflow 실행 시:
 
 - pass 1 → 즉시
 - pass 2 → 5분 후
 - pass 3 → 10분 후
 - 개별 pass 실패 시 다음 pass는 계속 실행
 
-수동 검증에서 3회 모두 11개 hotspot 수집에 성공했다.
+수동 검증에서는 한 workflow 내 3회 수집이 모두 정상 동작했다.
 
-최근 확인 시:
-- 최신 snapshot: 현재 시각 기준 약 **38분 전**
-- 최근 6시간 distinct observed_at: **10회**
-- 최신성 기준 90분 이내는 통과
-- 최근 6시간 12회 이상 기준은 새 workflow가 main에 반영된 후 추가 관찰 필요
+cron 변경 직전 DB 확인 결과:
+
+- 최근 6시간 distinct `observed_at`: **3회**
+- 최신 snapshot 경과시간: **314.2분**
+- 최근 6시간 12회 이상 기준: **미충족**
+- 최신 snapshot 90분 이내 기준: **미충족**
+
+이는 workflow 내부 3회 반복은 정상이나 GitHub scheduled trigger 자체가 충분히 자주 실행되지 않았기 때문이다.
+
+현재 cron을 `7,22,37,52 * * * *`로 변경했으며, 변경 후 일정 시간 동안 추가 관찰한 뒤 동일 기준으로 다시 검증한다.
 
 ---
 
@@ -231,6 +245,7 @@ BASELINE_AGE_RATE = {
 ```
 
 주의:
+
 - Citydata는 0~9세와 70대 이상도 별도 제공한다.
 - B 엔진의 사용자 age_band 계약은 10~60이므로 해당 6개 밴드만 제공한다.
 - 각 값은 전체 인구 대비 비율이므로 10~60끼리 합이 1이 되도록 재정규화하지 않는다.
@@ -243,6 +258,7 @@ BASELINE_AGE_RATE = {
 현재 확보한 상가정보·TourAPI·프로젝트 CSV에는 신뢰할 수 있는 영업시간 컬럼이 존재하지 않는다.
 
 따라서:
+
 - `business_hours`: **0 / 800 T1**
 - 업종별 임의 기본시간을 실제 영업시간처럼 DB에 저장하지 않음
 - 현재는 NULL을 유지하고 추천 엔진의 “영업시간 모름” fallback을 사용
@@ -300,8 +316,10 @@ Role B `scenario_report` 결과:
    - 현재 NULL 유지
 
 2. **Citydata 자동 폴링**
-   - 최신성 90분 이내는 확인
-   - 새 workflow main 반영 후 최근 6시간 수집 시점 12회 이상 여부를 추가 관찰
+   - workflow 내부 5분 간격 3회 수집은 정상 동작 확인
+   - 기존 scheduled trigger가 불규칙하게 실행되는 문제 확인
+   - cron을 `7,22,37,52 * * * *`로 변경
+   - 변경 후 최근 6시간 distinct observed_at >= 12 및 최신 snapshot <= 90분 기준 재검증 필요
 
 3. **segment_affinity 미지원 7종**
    - 총 450 POI

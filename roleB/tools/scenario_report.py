@@ -208,6 +208,27 @@ def render_text(rows: list[dict], summary: dict) -> None:
     total_w = sum(d["weight"] for d in summary.values())
     print(f"\n  순위를 실제로 가르는 가중치: {live_w:.2f} / {total_w:.2f}")
 
+    # --- 기여도 (B6-1의 근거) ------------------------------------------------
+    # "살아 있다"와 "순위를 얼마나 움직인다"는 다른 질문이다. 표준편차가
+    # 0보다 크면 살아 있지만, 실제로 순위를 움직이는 양은 **가중치 × 표준편차**다.
+    # 이 두 열이 갈리는 곳이 가중치를 볼 자리다 — 설계 의도(가중치 비중)와
+    # 실제 기여가 어긋난 항이 어디인지 여기서만 보인다.
+    print("\n기여도 — 가중치 × 표준편차 (실제로 순위를 움직인 양 · B6-1 근거)")
+    contrib = {t: d["weight"] * d["mean_stdev"] for t, d in summary.items()}
+    total_c = sum(contrib.values())
+    if total_c > 0:
+        print(f"  {'항':<20} {'설계 비중':>9} {'실제 기여':>9} {'차이':>8}")
+        for term, c in sorted(contrib.items(), key=lambda x: -x[1]):
+            intended = summary[term]["weight"] / total_w * 100
+            actual = c / total_c * 100
+            print(
+                f"  {term:<20} {intended:8.1f}% {actual:8.1f}% {actual - intended:+7.1f}p"
+            )
+        print(
+            "\n  설계 비중보다 실제 기여가 낮은 항은 **데이터가 얇은 것**이지"
+            "\n  가중치가 낮은 것이 아니다. 가중치를 올려도 없는 정보는 생기지 않는다."
+        )
+
     lat = [r["ms"] for r in ok]
     if lat:
         p = sc.percentiles(sorted(lat))

@@ -93,3 +93,78 @@ def test_health_returns_false_instead_of_raising():
         assert db.healthy() is False
     finally:
         db.close()
+
+
+# --- 왕복 줄이기 (2026-08-30) -------------------------------------------------
+#
+# 배포본 추천이 캐시 히트에도 2,954ms였다. 원인은 쿼리 실행 시간이 아니라
+# **왕복 횟수**였다 — Render(싱가포르) → Supabase(서울) 왕복이 실측 88ms인데
+# DB 호출 한 번이 왕복을 3회 썼다: `check`의 SELECT 1 · 실제 쿼리 · COMMIT.
+# 추천은 DB를 10번 부르므로 10 × 3 × 88ms ≈ 2.6초다.
+#
+# 그래서 `check`를 `max_idle`로, 트랜잭션을 `autocommit`으로 바꿨다. 대신
+# 죽은 커넥션을 집어오는 드문 경우를 `_run`이 **읽기에 한해** 재시도한다.
+# 쓰기를 재시도하지 않는 것이 이 설계의 핵심이다.
+
+
+def test_풀은_대여마다_확인하지_않는다():
+    """`check`가 다시 붙으면 요청당 왕복이 10회 늘어난다."""
+    db = Database(_settings())
+    db.open()
+    try:
+        assert db._pool.kwargs.get("autocommit") is True, "COMMIT 왕복이 되살아났다"
+        assert db._pool._check is None, "check가 다시 붙었다 — 왕복 10회가 늘어난다"
+        assert db._pool.max_idle <= 300, "유휴 커넥션을 너무 오래 들고 있다"
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    "sql, read_only",
+    [
+        ("SELECT 1", True),
+        ("  \n  select poi_id from poi", True),
+        ("-- 주석 한 줄\nSELECT 1", True),
+        ("INSERT INTO recommendation_log (user_id) VALUES (%(u)s) RETURNING log_id", False),
+        ("UPDATE explanation_cache SET hit_count = hit_count + 1 RETURNING payload", False),
+        ("DELETE FROM query_vector_cache", False),
+        # WITH 는 `WITH x AS (...) INSERT ...` 가 가능하다. 읽기로 보지 않는다.
+        ("WITH x AS (SELECT 1) SELECT * FROM x", False),
+    ],
+)
+def test_재시도_대상은_SELECT_뿐이다(sql, read_only):
+    """`UPDATE ... RETURNING`도 결과를 돌려준다 — '결과를 읽는가'로는 못 가른다.
+
+    쓰기를 재시도하면 '닿기 전에 끊긴 것'과 '실행됐는데 응답이 유실된 것'을
+    구분할 수 없어 recommendation_log에 한 요청이 두 줄 남는다. 조용히 틀린
+    데이터보다 503이 낫다.
+    """
+    from app.db import _is_read_only
+
+    assert _is_read_only(sql) is read_only
+
+
+def test_쓰기는_커넥션이_죽어도_재시도하지_않는다(monkeypatch):
+    db = Database(_settings())
+    db.open()
+    try:
+        from psycopg import OperationalError
+
+        tries = {"n": 0}
+
+        def boom(*a, **kw):
+            tries["n"] += 1
+            raise OperationalError("커넥션이 끊겼다")
+
+        monkeypatch.setattr(db, "_once", boom)
+
+        with pytest.raises(DatabaseUnavailable):
+            db.fetch_all("INSERT INTO recommendation_log (user_id) VALUES ('u') RETURNING log_id")
+        assert tries["n"] == 1, "쓰기를 재시도했다"
+
+        tries["n"] = 0
+        with pytest.raises(DatabaseUnavailable):
+            db.fetch_all("SELECT 1")
+        assert tries["n"] == 2, "읽기는 한 번 재시도해야 한다"
+    finally:
+        db.close()
