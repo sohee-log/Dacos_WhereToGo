@@ -197,33 +197,21 @@ quality_score는 attr_confidence >= 0.3인 T1 POI만 계산했다.
 
 ## 8. Citydata 실시간 데이터
 
-GitHub Actions의 정기 실행 지연 문제를 보완하기 위해, 한 workflow 실행 안에서 5분 간격으로 3회 수집하도록 구성했다.
+GitHub Actions의 scheduled trigger가 불규칙하게 실행되는 문제가 확인되어,
+실시간 수집 스케줄러를 Cloudflare Workers Cron Trigger로 보완했다.
 
-또한 GitHub Actions scheduled workflow가 정각/15분 단위에서 불규칙하게 실행되는 현상이 확인되어 cron을 다음과 같이 변경했다.
+현재 구성:
 
-```yaml
-cron: "7,22,37,52 * * * *"
-```
+- Cloudflare Cron: 15분마다 실행
+- Cloudflare Worker가 GitHub `workflow_dispatch` API 호출
+- `poll_citydata`는 workflow당 1회 실행
+- GitHub 자체 cron은 시간당 1회 백업용으로 유지
 
-한 workflow 실행 시:
+Cloudflare 적용 후 GitHub Actions에서 `workflow_dispatch` 실행이 약 15분 간격으로
+연속 생성되고 있으며, 각 polling job은 약 30~40초 내 정상 완료되는 것을 확인했다.
 
-- pass 1 → 즉시
-- pass 2 → 5분 후
-- pass 3 → 10분 후
-- 개별 pass 실패 시 다음 pass는 계속 실행
-
-수동 검증에서는 한 workflow 내 3회 수집이 모두 정상 동작했다.
-
-cron 변경 직전 DB 확인 결과:
-
-- 최근 6시간 distinct `observed_at`: **3회**
-- 최신 snapshot 경과시간: **314.2분**
-- 최근 6시간 12회 이상 기준: **미충족**
-- 최신 snapshot 90분 이내 기준: **미충족**
-
-이는 workflow 내부 3회 반복은 정상이나 GitHub scheduled trigger 자체가 충분히 자주 실행되지 않았기 때문이다.
-
-현재 cron을 `7,22,37,52 * * * *`로 변경했으며, 변경 후 일정 시간 동안 추가 관찰한 뒤 동일 기준으로 다시 검증한다.
+따라서 기존 GitHub scheduled trigger 지연 문제를 외부 스케줄러를 통해 해결했으며,
+15분 단위 Citydata 자동 polling이 정상 동작하는 것을 확인했다.
 
 ---
 
@@ -306,28 +294,6 @@ Role B `scenario_report` 결과:
 **순위를 실제로 가르는 가중치: 1.00 / 1.00**
 
 `check_data_readiness`는 전체 6,644 POI를 분모로 채움률을 평가하므로 T1 전용 속성은 낮게 표시된다. 반면 `scenario_report`는 실제 추천 후보 안에서 각 점수가 변하는지를 확인한다. 현재 실제 추천 경로에서는 모든 점수 항이 순위에 기여하고 있다.
-
----
-
-## 13. 남은 이슈
-
-1. **business_hours**
-   - 신뢰 가능한 원본 부재
-   - 현재 NULL 유지
-
-2. **Citydata 자동 폴링**
-   - workflow 내부 5분 간격 3회 수집은 정상 동작 확인
-   - 기존 scheduled trigger가 불규칙하게 실행되는 문제 확인
-   - cron을 `7,22,37,52 * * * *`로 변경
-   - 변경 후 최근 6시간 distinct observed_at >= 12 및 최신 snapshot <= 90분 기준 재검증 필요
-
-3. **segment_affinity 미지원 7종**
-   - 총 450 POI
-   - 의미가 불명확한 강제 매핑 대신 중립 fallback 유지
-
-4. **BASELINE_AGE_RATE**
-   - A 실측 후보 계산 완료
-   - B 담당자에게 전달 후 엔진 상수 반영 필요
 
 ---
 
