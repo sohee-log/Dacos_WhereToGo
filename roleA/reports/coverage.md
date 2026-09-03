@@ -207,11 +207,17 @@ GitHub Actions의 scheduled trigger가 불규칙하게 실행되는 문제가 �
 - `poll_citydata`는 workflow당 1회 실행
 - GitHub 자체 cron은 시간당 1회 백업용으로 유지
 
-Cloudflare 적용 후 GitHub Actions에서 `workflow_dispatch` 실행이 약 15분 간격으로
-연속 생성되고 있으며, 각 polling job은 약 30~40초 내 정상 완료되는 것을 확인했다.
+Cloudflare 적용 후 GitHub Actions의 `workflow_dispatch` 실행이 약 15분 간격으로
+지속적으로 생성되는 것을 확인했다. 일부 단발성 timeout이 발생했으나 이후 실행은
+별도 개입 없이 정상적으로 재개되었다.
 
-따라서 기존 GitHub scheduled trigger 지연 문제를 외부 스케줄러를 통해 해결했으며,
-15분 단위 Citydata 자동 polling이 정상 동작하는 것을 확인했다.
+최종 DB 검증 결과:
+
+- 최근 6시간 distinct `observed_at`: **21회** → PASS
+- 최신 snapshot 경과시간: **35.4분** → PASS
+
+따라서 최근 6시간 12회 이상 및 최신 snapshot 90분 이내의 freshness 기준을
+모두 충족했으며, Citydata 자동 polling이 정상 동작하는 것으로 판정한다.
 
 ---
 
@@ -297,7 +303,7 @@ Role B `scenario_report` 결과:
 
 ---
 
-## 14. 결론
+## 13. 결론
 
 W4~W5 데이터 파이프라인의 핵심 입력은 모두 생성·적재되었다.
 
