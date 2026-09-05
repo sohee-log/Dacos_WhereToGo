@@ -62,31 +62,45 @@ function RecommendContent() {
   const [budgetBand, setBudgetBand] = useState<number>(2);
   const [visitAt, setVisitAt] = useState<string>(defaultVisitAt());
   const [location, setLocation] = useState(DEFAULT_LOCATION);
+  // GPS 시도가 끝났는지(성공/실패 무관) — 화면에 "위치 확인 중" 표시용으로만 쓴다.
+  const [locatingGps, setLocatingGps] = useState(false);
 
   // 용산구 대략 경계 (평가 시나리오 좌표 범위 기준: 이태원~청파~이촌~후암).
   // 서비스가 용산구 전용이라, 이 밖의 좌표는 실제 GPS라도 신뢰하지 않는다.
   const isWithinYongsan = (lat: number, lng: number) =>
     lat >= 37.51 && lat <= 37.56 && lng >= 126.95 && lng <= 127.02;
 
-  // 사용자 위치. 실패하거나 용산구 밖이면 조용히 폴백 좌표(이태원)를 유지한다.
-  // ⚠️ 예전엔 용산구 밖 실제 GPS도 그대로 믿었다 — 그러면 "재검색"을 누르는
-  // 시점(GPS 응답이 그 사이 도착)에 갑자기 전혀 다른 지역 좌표로 요청이
-  // 나가서, 용산구 밖에서 테스트할 때 결과가 뜬금없이 이상해졌다.
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        if (isWithinYongsan(latitude, longitude)) {
-          setLocation({ lat: latitude, lng: longitude });
-        }
-        // 용산구 밖이면 그냥 무시 — DEFAULT_LOCATION 유지
-      },
-      () => {
-        /* 폴백 좌표 유지 */
-      },
-      { timeout: 3000 }
-    );
+  // GPS를 한 번 시도해서 좌표를 Promise로 반환한다. 성공/실패/타임아웃/미지원
+  // 어느 경우든 항상 값을 resolve한다(reject 안 함) — 폴백은 항상 DEFAULT_LOCATION.
+  //
+  // ⚠️ 예전엔 마운트 시점에 딱 한 번만 시도했다. 그 한 번이 실내 등에서
+  // 타임아웃(3초)으로 실패하면, 그 세션 내내 "재검색"을 눌러도 다시 시도를
+  // 안 해서 이태원에 영구적으로 갇혔다. 이제는 fetchRecommend를 부를 때마다
+  // (첫 진입이든 재검색이든) 매번 새로 시도한다. 타임아웃도 8초로 늘렸다.
+  const resolveLocation = useCallback((): Promise<{ lat: number; lng: number }> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(DEFAULT_LOCATION);
+        return;
+      }
+      setLocatingGps(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocatingGps(false);
+          const { latitude, longitude } = pos.coords;
+          resolve(
+            isWithinYongsan(latitude, longitude)
+              ? { lat: latitude, lng: longitude }
+              : DEFAULT_LOCATION // 용산구 밖이면 무시
+          );
+        },
+        () => {
+          setLocatingGps(false);
+          resolve(DEFAULT_LOCATION); // 거부/실패 — 이번 요청만 폴백, 다음 시도는 다시 함
+        },
+        { timeout: 8000, enableHighAccuracy: false, maximumAge: 60000 }
+      );
+    });
   }, []);
 
   const fetchRecommend = useCallback(async () => {
@@ -101,6 +115,10 @@ function RecommendContent() {
     setErrorMessage(null);
     setErrorKind('none');
 
+    // 호출될 때마다(재검색 포함) GPS를 새로 시도 — state가 아니라 이 값을 바로 요청에 쓴다.
+    const resolvedLocation = await resolveLocation();
+    setLocation(resolvedLocation);
+
     const budgetBandClamped = Math.min(Math.max(budgetBand, 1), 4) as 1 | 2 | 3 | 4;
 
     const requestBody: RecommendRequest = {
@@ -108,7 +126,7 @@ function RecommendContent() {
       purpose,
       party_size: partySize,
       budget_band: budgetBandClamped,
-      location,
+      location: resolvedLocation,
       visit_at: visitAt,
     };
 
@@ -137,10 +155,10 @@ function RecommendContent() {
     } finally {
       setLoading(false);
     }
-    // location은 useEffect에서 비동기로 갱신되므로 의도적으로 의존성에서 제외 —
-    // 최초 1회 + 사용자가 폼을 다시 제출할 때만 재요청한다.
+    // resolveLocation을 fetchRecommend 안에서 매번 새로 부르므로 location을
+    // 의존성에 넣을 필요가 없다 (넣으면 오히려 무한루프 위험).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, purpose, partySize, budgetBand, visitAt]);
+  }, [userId, purpose, partySize, budgetBand, visitAt, resolveLocation]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 최초 데이터 로드 패턴
@@ -162,7 +180,9 @@ function RecommendContent() {
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-slate-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
         <p className="font-semibold text-sm">용산의 실시간 날씨와 핫플 분석 중... 🧭</p>
-        <p className="text-xs text-slate-400 mt-1">서버를 깨우고 있으니 잠시만 기다려주세요.</p>
+        <p className="text-xs text-slate-400 mt-1">
+          {locatingGps ? '내 위치를 확인하는 중이에요...' : '서버를 깨우고 있으니 잠시만 기다려주세요.'}
+        </p>
       </div>
     );
   }

@@ -94,7 +94,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
     <form onSubmit={handleSubmit} className="space-y-6 max-w-md mx-auto bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
       <div className="space-y-1">
         <h2 className="text-xl font-black text-slate-900">반가워요! ⚡</h2>
-        <p className="text-xs text-slate-400">당신의 성향을 기반으로 용산구 핫플을 큐레이션합니다.</p>
+        <p className="text-xs text-slate-400">당신의 성향과 상황을 기반으로 용산구 핫플을 큐레이션합니다.</p>
       </div>
 
       {error && <p className="text-xs text-red-500 font-medium">⚠️ {error}</p>}
@@ -161,7 +161,7 @@ export default function OnboardingForm({ onSuccess }: OnboardingFormProps) {
 
       {/* 문항 3: 주된 방문 목적 */}
       <div className="space-y-2">
-        <label className="block text-xs font-bold text-slate-700">3. 용산에 주로 누구와 어떤 목적으로 가시나요?</label>
+        <label className="block text-xs font-bold text-slate-700">3. 용산에 누구와 어떤 목적으로 가시나요?</label>
         <div className="flex flex-wrap gap-1.5">
           {PURPOSES.map((tag) => {
             const isSelected = selectedPurposes.includes(tag);

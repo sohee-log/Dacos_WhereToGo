@@ -7,6 +7,10 @@ interface ScoreDebugProps {
   explainMode: RecommendResponse['results'][number]['explain_mode'];
 }
 
+// score/score_breakdown은 0~1 스케일이다 (PLAN.md 예시: score: 0.87). "0.36점"처럼
+// 헷갈리게 보여주지 않고 퍼센트로 환산한다.
+const toPercent = (v: number) => Math.round(v * 100);
+
 export default function ScoreDebug({ scoreBreakdown, score, explainMode }: ScoreDebugProps) {
   return (
     <div className="mt-3 p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-[11px] space-y-2 border border-slate-800 shadow-inner">
@@ -18,24 +22,24 @@ export default function ScoreDebug({ scoreBreakdown, score, explainMode }: Score
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
-        <p>🎯 총점: <span className="text-white font-bold">{score}점</span></p>
-        <p>👥 세그먼트: <span>{scoreBreakdown.segment}</span></p>
-        <p>🍢 목적성 일치: <span>{scoreBreakdown.purpose}</span></p>
-        <p>👅 취향(Taste): <span>{scoreBreakdown.taste}</span></p>
-        <p>⛅ 컨텍스트 매칭: <span>{scoreBreakdown.context}</span></p>
-        <p>⭐ 장소 퀄리티: <span>{scoreBreakdown.quality}</span></p>
-        <p>📍 거리 점수: <span>{scoreBreakdown.distance}</span></p>
-        
+        <p>🎯 총점: <span className="text-white font-bold">{toPercent(score)}%</span></p>
+        <p>👥 세그먼트: <span>{toPercent(scoreBreakdown.segment)}%</span></p>
+        <p>🍢 목적성 일치: <span>{toPercent(scoreBreakdown.purpose)}%</span></p>
+        <p>👅 취향(Taste): <span>{toPercent(scoreBreakdown.taste)}%</span></p>
+        <p>⛅ 상황 매칭: <span>{toPercent(scoreBreakdown.context)}%</span></p>
+        <p>⭐ 장소 퀄리티: <span>{toPercent(scoreBreakdown.quality)}%</span></p>
+        <p>📍 거리 적합도: <span>{toPercent(scoreBreakdown.distance)}%</span></p>
+
         {/* ⚠️ 리드미 절대 규칙: undefined일 때 0으로 조작하지 않고 "해당 없음" 처리 */}
         <p>⚡ 실시간 세그먼트: {' '}
           <span className={scoreBreakdown.live_segment === undefined ? 'text-slate-500 italic' : 'text-amber-400 font-bold'}>
-            {scoreBreakdown.live_segment !== undefined ? `${scoreBreakdown.live_segment}` : '해당 없음'}
+            {scoreBreakdown.live_segment !== undefined ? `${toPercent(scoreBreakdown.live_segment)}%` : '해당 없음'}
           </span>
         </p>
 
-        <p>🎪 혼잡도 점수: {' '}
+        <p>🎪 혼잡도 가중치: {' '}
           <span className={scoreBreakdown.crowd === undefined ? 'text-slate-500 italic' : 'text-amber-400 font-bold'}>
-            {scoreBreakdown.crowd !== undefined ? `${scoreBreakdown.crowd}` : '해당 없음'}
+            {scoreBreakdown.crowd !== undefined ? `${toPercent(scoreBreakdown.crowd)}%` : '해당 없음'}
           </span>
         </p>
       </div>

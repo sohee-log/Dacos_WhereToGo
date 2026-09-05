@@ -7,47 +7,42 @@ import { postFeedback } from '@/lib/api';
 
 type Place = RecommendResponse['results'][number];
 
+// score/score_breakdown은 0~1 스케일이다 (PLAN.md 예시: score: 0.87). 화면엔
+// "0.36점"처럼 헷갈리게 보여주지 않고 퍼센트로 환산해서 보여준다.
+const toPercent = (v: number) => Math.round(v * 100);
+
 interface ResultCardProps {
   place: Place;
-  logId: number; 
+  logId: number; // C4-2: /api/feedback 연동에 필요
 }
 
-const EXPLAIN_MODE_LABEL: Record<Place['explain_mode'], string> = {
-  template: '템플릿',
-  llm: 'AI 생성',
-  cache: '캐시',
-};
 
 export default function ResultCard({ place, logId }: ResultCardProps) {
   const { score_breakdown } = place;
-  
-  // 상태 관리
   const [clicked, setClicked] = useState(false);
-  const [rated, setRated] = useState<number | null>(null); // 별점 상태 추가
+  const [rated, setRated] = useState<number | null>(null);
 
-  // 1. 카드 클릭 로깅 (계약 위반 수정 완료)
+  // 클릭 로깅 — clicked는 boolean이 아니라 poi_id 배열이다 (TODO_FOR_C §C-2).
+  // 실패해도(404 포함) 화면 흐름은 막지 않는다 (postFeedback이 내부에서 처리)
   const handleClick = () => {
     if (clicked) return;
     setClicked(true);
-    
-    // 수정됨: clicked를 boolean이 아닌 string[] 배열로 전송[cite: 1]
-    postFeedback({ 
-      log_id: logId, 
-      clicked: [place.poi_id] 
-    }).catch((err) => {
-      console.error('클릭 로깅 실패', err);
+    postFeedback({ log_id: logId, clicked: [place.poi_id] }).catch((err) => {
+      console.error('피드백 전송 실패', err);
     });
   };
 
-  // 2. 별점(만족도) 전송 핸들러[cite: 1]
+  // 만족도 별점 — C4-3. selected는 poi_id 문자열, feedback은 1~5 (satisfaction 아님).
   const handleRate = (score: number) => {
+    if (rated !== null) return;
     setRated(score);
-    
     postFeedback({
       log_id: logId,
-      selected: place.poi_id, // 선택한 poi_id (문자열)[cite: 1]
-      feedback: score,        // 1~5점 (satisfaction 아님)[cite: 1]
-    }).catch((err) => console.error('만족도 전송 실패', err)); // 실패해도 화면 멈춤 방지[cite: 1]
+      selected: place.poi_id,
+      feedback: score as 1 | 2 | 3 | 4 | 5,
+    }).catch((err) => {
+      console.error('만족도 전송 실패', err);
+    });
   };
 
   const hasEvidence = place.evidence && place.evidence.length > 0;
@@ -63,8 +58,7 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
           <p className="text-[11px] text-slate-400 mt-0.5">{place.category} · 도보 {place.distance_m}m</p>
         </div>
         <div className="text-right space-y-1">
-          <span className="text-xs font-black text-indigo-600 block">{place.score}점</span>
-          <span className="text-[9px] text-slate-300">{EXPLAIN_MODE_LABEL[place.explain_mode]}</span>
+          <span className="text-xs font-black text-indigo-600 block">{toPercent(place.score)}%</span>
         </div>
       </div>
 
@@ -73,23 +67,24 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
       </p>
 
       <div className="text-[10px] text-slate-400 grid grid-cols-2 gap-1 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100/60">
-        <div>🎯 목적 적합도: {score_breakdown.purpose}점</div>
-        <div>😋 취향 일치도: {score_breakdown.taste}점</div>
-        <div>🗺️ 거리 점수: {score_breakdown.distance}점</div>
+        <div>🎯 목적 적합도: {toPercent(score_breakdown.purpose)}%</div>
+        <div>😋 취향 일치도: {toPercent(score_breakdown.taste)}%</div>
+        <div>🗺️ 거리 적합도: {toPercent(score_breakdown.distance)}%</div>
 
         {score_breakdown.live_segment !== undefined ? (
-          <div>⚡ 실시간 매칭: {score_breakdown.live_segment}점</div>
+          <div>⚡ 실시간 매칭: {toPercent(score_breakdown.live_segment)}%</div>
         ) : (
           <div className="text-slate-300">⚡ 실시간 매칭: 해당 없음</div>
         )}
 
         {score_breakdown.crowd !== undefined ? (
-          <div>👥 혼잡도 가중: {score_breakdown.crowd}점</div>
+          <div>👥 혼잡도 가중치: {toPercent(score_breakdown.crowd)}%</div>
         ) : (
-          <div className="text-slate-300">👥 혼잡도 가중: 해당 없음</div>
+          <div className="text-slate-300">👥 혼잡도 가중치: 해당 없음</div>
         )}
       </div>
 
+      {/* evidence가 빈 배열이면 인용 영역을 통째로 숨긴다 */}
       {hasEvidence && (
         <div className="space-y-1.5 border-t border-slate-100 pt-3">
           <span className="text-[10px] font-bold text-slate-400 block">리뷰 근거 (Evidence)</span>
@@ -101,27 +96,26 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
         </div>
       )}
 
-      {/* --- 사후 만족도 UI (카드를 클릭했을 때만 나타남) --- */}
+      {/* C4-3: 만족도 별점 — 카드를 클릭(선택)한 뒤에만 노출 */}
       {clicked && (
-        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 mt-1">
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
           <span className="text-[10px] text-slate-400">이 추천 어땠나요?</span>
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
-              onClick={(e) => { 
-                e.stopPropagation(); // ⭐️ 중요: 카드 전체 클릭 이벤트와 중복 방지[cite: 1]
-                handleRate(n); 
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation(); // 카드 전체 onClick(클릭 로깅) 재발화 방지
+                handleRate(n);
               }}
               disabled={rated !== null}
               aria-label={`${n}점`}
-              className={`text-lg transition-colors ${
-                rated !== null && n <= rated ? 'text-amber-400' : 'text-slate-200 hover:text-amber-200'
-              }`}
+              className={rated !== null && n <= rated ? 'text-amber-400' : 'text-slate-300'}
             >
               ★
             </button>
           ))}
-          {rated !== null && <span className="text-[10px] text-emerald-500 ml-1">감사합니다</span>}
+          {rated !== null && <span className="text-[10px] text-emerald-500">감사합니다</span>}
         </div>
       )}
     </div>

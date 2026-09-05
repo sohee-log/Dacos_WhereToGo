@@ -18,10 +18,10 @@ interface RequestFormProps {
 }
 
 const BUDGET_LABELS: Record<number, string> = {
-  1: '1만원 이하',
-  2: '1~3만원',
-  3: '3~5만원',
-  4: '5만원 이상',
+  1: '1만원대',
+  2: '2~3만 원대',
+  3: '4~5만 원대',
+  4: '6만원 이상',
 };
 
 // <input type="datetime-local">은 로컬 시각 문자열(YYYY-MM-DDTHH:mm)을 쓰고
@@ -50,7 +50,7 @@ export default function RequestForm({
 }: RequestFormProps) {
   return (
     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-      <p className="text-xs font-bold text-slate-700">🎯 조건 변경하여 재검색</p>
+      <p className="text-xs font-bold text-slate-700">🎯 조건을 변경하여 재검색</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-[11px] text-slate-400 font-medium mb-1">방문 목적</label>

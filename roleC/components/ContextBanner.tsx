@@ -52,7 +52,7 @@ export default function ContextBanner({ context }: ContextBannerProps) {
           <p className="flex items-start gap-1">
             <span>☀️</span>
             <span>
-              오늘 외부 활동에 적합한 컨텍스트가 확인되어, 취향 벡터에 기반한 <strong>야외 가시성 및 테라스 스팟</strong>을 필터에 결합하여 추천해 드립니다.
+              오늘은 외부 활동에 적합한 날씨이며, 취향에 기반한 <strong>야외 테라스 스팟</strong>을 필터에 결합하여 추천해 드립니다.
             </span>
           </p>
         )}
