@@ -58,7 +58,7 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
           <p className="text-[11px] text-slate-400 mt-0.5">{place.category} · 도보 {place.distance_m}m</p>
         </div>
         <div className="text-right space-y-1">
-          <span className="text-xs font-black text-indigo-600 block">{toPercent(place.score)}%</span>
+          <span className="text-xs font-black text-indigo-600 block">{toPercent(place.score)}점</span>
         </div>
       </div>
 
@@ -72,9 +72,9 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
         <div>🗺️ 거리 적합도: {toPercent(score_breakdown.distance)}%</div>
 
         {score_breakdown.live_segment !== undefined ? (
-          <div>⚡ 실시간 매칭: {toPercent(score_breakdown.live_segment)}%</div>
+          <div>⚡ 실시간 매칭률: {toPercent(score_breakdown.live_segment)}%</div>
         ) : (
-          <div className="text-slate-300">⚡ 실시간 매칭: 해당 없음</div>
+          <div className="text-slate-300">⚡ 실시간 매칭률: 해당 없음</div>
         )}
 
         {score_breakdown.crowd !== undefined ? (

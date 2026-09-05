@@ -22,7 +22,7 @@ export default function ScoreDebug({ scoreBreakdown, score, explainMode }: Score
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
-        <p>🎯 총점: <span className="text-white font-bold">{toPercent(score)}%</span></p>
+        <p>🎯 총점: <span className="text-white font-bold">{toPercent(score)}점</span></p>
         <p>👥 세그먼트: <span>{toPercent(scoreBreakdown.segment)}%</span></p>
         <p>🍢 목적성 일치: <span>{toPercent(scoreBreakdown.purpose)}%</span></p>
         <p>👅 취향(Taste): <span>{toPercent(scoreBreakdown.taste)}%</span></p>
