@@ -100,13 +100,13 @@ def fetch_citydata(
         f"{hotspot_code}"
     )
 
-    for attempt in range(3):
+    for attempt in range(2):
 
         try:
 
             response = session.get(
                 url,
-                timeout=30,
+                timeout=10,
             )
 
             response.raise_for_status()
@@ -140,7 +140,7 @@ def fetch_citydata(
             ValueError,
         ):
 
-            if attempt == 2:
+            if attempt == 1:
                 raise
 
             time.sleep(2**attempt)
@@ -469,7 +469,13 @@ def main():
                 )
 
         if failures:
-            raise RuntimeError(f"{len(failures)}개 hotspot " "수집 실패")
+            print(
+                f"::warning::{len(failures)}개 hotspot 수집 실패 "
+                f"(성공 {success}/{len(hotspots)})"
+            )
+
+        if success < 6:
+            raise RuntimeError(f"수집 성공률 부족: {success}/{len(hotspots)}")
 
     finally:
 

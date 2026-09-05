@@ -2,8 +2,7 @@ name: Poll Seoul Citydata
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
-
+    - cron: "47 * * * *"   # GitHub 자체 스케줄은 시간당 1회 백업
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +13,7 @@ jobs:
   poll-citydata:
     runs-on: ubuntu-latest
 
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -30,15 +29,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests python-dotenv "psycopg[binary]"
 
-      - name: Poll Seoul citydata (5분 간격 3회)
+      - name: Poll Seoul citydata
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
-        run: |
-          for i in 1 2 3; do
-            echo "--- pass $i ---"
-            python -m roleA.jobs.poll_citydata || echo "pass $i 실패 — 계속한다"
-            if [ "$i" -lt 3 ]; then
-              sleep 300
-            fi
-          done
+        run: python -m roleA.jobs.poll_citydata
