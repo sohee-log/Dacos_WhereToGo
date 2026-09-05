@@ -52,12 +52,24 @@ export default function ResultCard({ place, logId }: ResultCardProps) {
       onClick={handleClick}
       className="bg-white rounded-3xl border border-slate-100 p-4 shadow-sm space-y-4 cursor-pointer"
     >
-      <div className="flex justify-between items-start">
-        <div>
-          <h4 className="text-sm font-black text-slate-900">{place.name}</h4>
+      <div className="flex justify-between items-start gap-3">
+        {place.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element -- TourAPI 이미지 호스트가
+          // 다양해서 next/image remotePatterns 설정 없이 우선 단순 img로 렌더링.
+          <img
+            src={place.image_url}
+            alt={place.name}
+            className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-slate-100"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'; // 깨진 링크는 조용히 숨김
+            }}
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-black text-slate-900 truncate">{place.name}</h4>
           <p className="text-[11px] text-slate-400 mt-0.5">{place.category} · 도보 {place.distance_m}m</p>
         </div>
-        <div className="text-right space-y-1">
+        <div className="text-right space-y-1 flex-shrink-0">
           <span className="text-xs font-black text-indigo-600 block">{toPercent(place.score)}점</span>
         </div>
       </div>
